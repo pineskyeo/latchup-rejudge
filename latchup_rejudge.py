@@ -421,6 +421,245 @@ def plot_summary(pairs, path):
     plt.close(fig)
 
 
+# --------------------------------------------------------------------------
+# 집계 분석 리포트 (원시 데이터 없이 공유 가능한 통계만 출력)
+# --------------------------------------------------------------------------
+RULES = ("LEGACY", "FIRST", "DEEPEST", "LAST", "MAXPEAK")
+RULE_DESC = OrderedDict([
+    ("LEGACY", "현재 장비: dV 부호가 처음 바뀌는 점"),
+    ("FIRST", "첫 번째 snapback"),
+    ("DEEPEST", "가장 깊게 떨어지는 snapback"),
+    ("LAST", "마지막 snapback"),
+    ("MAXPEAK", "peak 전압이 가장 높은 snapback"),
+])
+LOG_STEP = math.log10(1.05)
+
+
+def polarity(i):
+    nz = [x for x in i if x != 0.0]
+    return -1.0 if nz and sorted(nz)[len(nz) // 2] < 0 else 1.0
+
+
+def curve_features(c, ev, leg):
+    """한 곡선의 집계용 특징. 전압은 극성 정규화(양수 방향)."""
+    pol = polarity(c["i"])
+    vp = [x * pol for x in c["v"]]
+    ai = [abs(x) for x in c["i"]]
+    snaps = []
+    for k, (p, q) in enumerate(ev):
+        snaps.append({"order": k + 1, "vt": vp[p], "it": ai[p],
+                      "vh": vp[q], "depth": vp[p] - vp[q]})
+    rule = {}
+    lv = leg["VT"] * pol if leg["VT"] is not None else None
+    lh = leg["VH"] * pol if leg["VH"] is not None else None
+    rule["LEGACY"] = (lv, lh)
+    if snaps:
+        pick = {
+            "FIRST": snaps[0],
+            "DEEPEST": max(snaps, key=lambda s: s["depth"]),
+            "LAST": snaps[-1],
+            "MAXPEAK": max(snaps, key=lambda s: s["vt"]),
+        }
+        for r, s_ in pick.items():
+            rule[r] = (s_["vt"], s_["vh"])
+    else:
+        for r in RULES[1:]:
+            rule[r] = (None, None)
+    return {"item": c["key"][9], "n": len(vp), "v_last": vp[-1],
+            "i_last": ai[-1], "vmax": max(vp), "snaps": snaps, "rule": rule}
+
+
+def _q(xs, p):
+    k = min(len(xs) - 1, max(0, int(round(p / 100.0 * (len(xs) - 1)))))
+    return xs[k]
+
+
+def robust(xs):
+    """n, median, robust sigma(1.4826*MAD), p10, p90, BC."""
+    xs = sorted(x for x in xs if x is not None)
+    n = len(xs)
+    if n == 0:
+        return None
+    med = _q(xs, 50)
+    mad = sorted(abs(x - med) for x in xs)
+    rs = 1.4826 * _q(mad, 50)
+    return {"n": n, "med": med, "rs": rs, "p10": _q(xs, 10),
+            "p90": _q(xs, 90), "bc": bimodality(xs)}
+
+
+def bimodality(xs):
+    """Sarle's bimodality coefficient. > 0.555 이면 다봉(쌍봉) 의심."""
+    n = len(xs)
+    if n < 4:
+        return None
+    m = sum(xs) / float(n)
+    m2 = sum((x - m) ** 2 for x in xs) / n
+    if m2 <= 0:
+        return None
+    m3 = sum((x - m) ** 3 for x in xs) / n
+    m4 = sum((x - m) ** 4 for x in xs) / n
+    g = m3 / m2 ** 1.5
+    k = m4 / m2 ** 2 - 3.0
+    g1 = g * math.sqrt(n * (n - 1)) / (n - 2)
+    g2 = ((n + 1) * k + 6) * (n - 1) / float((n - 2) * (n - 3))
+    return (g1 ** 2 + 1) / (g2 + 3.0 * (n - 1) ** 2 / ((n - 2) * (n - 3)))
+
+
+def ascii_hist(xs, lo, hi, bins=20, width=40):
+    xs = [x for x in xs if x is not None]
+    if not xs or hi <= lo:
+        return ["    (데이터 없음)"]
+    cnt = [0] * bins
+    for x in xs:
+        b = int((x - lo) / (hi - lo) * bins)
+        cnt[min(bins - 1, max(0, b))] += 1
+    top = max(cnt) or 1
+    out = []
+    for b in range(bins):
+        x0 = lo + (hi - lo) * b / bins
+        out.append("    %8.3f | %-*s %d" % (x0, width,
+                                             "#" * int(round(cnt[b] * width
+                                                             / float(top))),
+                                             cnt[b]))
+    return out
+
+
+def fmt_stat(st):
+    if not st:
+        return "n=0"
+    bc = "-" if st["bc"] is None else "%.2f" % st["bc"]
+    return ("n=%5d  med=%7.3f  rσ=%6.3f  p10=%7.3f  p90=%7.3f  BC=%s%s"
+            % (st["n"], st["med"], st["rs"], st["p10"], st["p90"], bc,
+               " (쌍봉?)" if st["bc"] is not None and st["bc"] > 0.555
+               else ""))
+
+
+def build_report(feats, top_items=10):
+    L = []
+    add = L.append
+    N = len(feats)
+    add("=" * 78)
+    add("Latch-up 재판정 분석 리포트 (집계 통계만, 칩 ID/원시값 없음)")
+    add("전압은 극성 정규화(음방향 주입이면 부호 반전)한 값")
+    add("=" * 78)
+
+    # [1] sweep 종료 방식
+    nmax = max(f["n"] for f in feats)
+    full = [f for f in feats if f["n"] == nmax]
+    short = [f for f in feats if f["n"] < nmax]
+    add("")
+    add("[1] sweep 종료 방식 (최대 점 수 %d)" % nmax)
+    for name, grp in (("끝까지 측정", full), ("중간 종료", short)):
+        if not grp:
+            add("  %-10s %5d 개" % (name, 0))
+            continue
+        add("  %-10s %5d 개 (%4.1f%%)  마지막 V p10/50/90 = %s   "
+            "마지막 |I| p50 = %.3g A"
+            % (name, len(grp), 100.0 * len(grp) / N,
+               pct_str([f["v_last"] for f in grp]),
+               _q(sorted(f["i_last"] for f in grp), 50)))
+    lastmax = sum(1 for f in feats if f["v_last"] >= f["vmax"] - 1e-12)
+    add("  마지막 점이 곡선 최고 전압인 곡선: %d 개 (%.1f%%)"
+        % (lastmax, 100.0 * lastmax / N))
+
+    # [2] snapback 순서별 통계
+    add("")
+    add("[2] snapback 순서별 통계 (k번째 snapback)")
+    add("  %-4s %6s  %-26s %-24s %-24s" % ("k", "개수", "peak V p10/50/90",
+                                           "peak |I| p10/50/90",
+                                           "depth V p10/50/90"))
+    for k in range(1, 6):
+        ss = [s for f in feats for s in f["snaps"] if s["order"] == k]
+        if not ss:
+            break
+        add("  %-4d %6d  %-26s %-24s %-24s"
+            % (k, len(ss), pct_str([s["vt"] for s in ss]),
+               pct_str([s["it"] for s in ss]),
+               pct_str([s["depth"] for s in ss])))
+
+    # [3] 전류 decade 경계(range 전환) artifact 검사
+    add("")
+    add("[3] snapback 위치 vs 전류 decade 경계 (SMU range 전환 artifact 검사)")
+    add("  peak 전류의 log10 소수부 분포. 무작위면 10개 구간이 고르게 ~10%씩.")
+    add("  특정 구간(특히 0.0x 또는 0.9x)에 몰리면 range 전환 artifact 의심.")
+    for label, sel in (("전체", None), ("1번째", 1), ("2번째+", 2)):
+        ss = [s for f in feats for s in f["snaps"]
+              if s["it"] > 0 and (sel is None or (s["order"] == 1 if sel == 1
+                                                  else s["order"] >= 2))]
+        if not ss:
+            continue
+        cnt = [0] * 10
+        near = 0
+        for s in ss:
+            lg = math.log10(s["it"])
+            fr = lg - math.floor(lg)
+            cnt[min(9, int(fr * 10))] += 1
+            if min(fr, 1 - fr) <= LOG_STEP * 1.01:
+                near += 1
+        add("  %-7s n=%5d  decade 경계 ±1 step 안: %4.1f%% (무작위 기대 %.1f%%)"
+            % (label, len(ss), 100.0 * near / len(ss), 200.0 * LOG_STEP))
+        add("          소수부 구간 %: " + " ".join(
+            "%.1f:%4.1f" % (b / 10.0, 100.0 * cnt[b] / len(ss))
+            for b in range(10)))
+
+    # [4] legacy VT: snapback 1개 vs 여러 개 그룹 비교
+    add("")
+    add("[4] LEGACY VT 를 snapback 개수로 나눠 보기 (Trend 쌍봉 원인 확인)")
+    for label, cond in (("snap 0개", lambda n: n == 0),
+                        ("snap 1개", lambda n: n == 1),
+                        ("snap 2개+", lambda n: n >= 2)):
+        xs = [f["rule"]["LEGACY"][0] for f in feats if cond(len(f["snaps"]))]
+        add("  %-9s %s" % (label, fmt_stat(robust(xs))))
+
+    # [5] 판정 규칙 후보 비교 (전체)
+    add("")
+    add("[5] 판정 규칙 후보별 VT / VH 분포 (전체 곡선)")
+    add("  rσ = robust sigma(1.4826*MAD). BC = bimodality coefficient,"
+        " 0.555 초과면 쌍봉 의심.")
+    add("  ITEM 이 여러 개면 ITEM 차이 때문에 섞여 보일 수 있으니 [6] 도 함께 볼 것.")
+    for r in RULES:
+        add("  %-8s %s" % (r, RULE_DESC[r]))
+        add("    VT  %s" % fmt_stat(robust([f["rule"][r][0] for f in feats])))
+        add("    VH  %s" % fmt_stat(robust([f["rule"][r][1] for f in feats])))
+
+    # [6] ITEM 별 규칙 비교
+    items = OrderedDict()
+    for f in feats:
+        items.setdefault(f["item"], []).append(f)
+    order = sorted(items, key=lambda k: -len(items[k]))
+    add("")
+    add("[6] ITEM 별 VT 비교 (곡선 수 상위 %d 개 ITEM, ITEM 이름은 순번으로 표시)"
+        % min(top_items, len(order)))
+    for idx, it in enumerate(order[:top_items], 1):
+        grp = items[it]
+        nsn = {}
+        for f in grp:
+            k = min(len(f["snaps"]), 3)
+            nsn[k] = nsn.get(k, 0) + 1
+        add("  ITEM#%d  곡선 %d 개  snap 수 분포: %s" % (
+            idx, len(grp), ", ".join("%s=%d" % ("3+" if k == 3 else k, nsn[k])
+                                     for k in sorted(nsn))))
+        for r in RULES:
+            add("    %-8s VT %s" % (r, fmt_stat(robust(
+                [f["rule"][r][0] for f in grp]))))
+
+    # [7] 가장 큰 ITEM 의 규칙별 VT 히스토그램
+    if order:
+        grp = items[order[0]]
+        allv = [f["rule"][r][0] for f in grp for r in RULES
+                if f["rule"][r][0] is not None]
+        if allv:
+            lo, hi = min(allv), max(allv)
+            add("")
+            add("[7] ITEM#1 규칙별 VT 히스토그램 (공통 축 %.3f ~ %.3f V)"
+                % (lo, hi))
+            for r in RULES:
+                add("  -- %s" % r)
+                L.extend(ascii_hist([f["rule"][r][0] for f in grp], lo, hi))
+    add("")
+    return L
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="LUP log 재판정 (이중 snapback 대응)",
@@ -442,6 +681,10 @@ def main(argv=None):
     ap.add_argument("--legacy-pad", type=int, default=0,
                     help="legacy 재현 시 배열을 이 길이(max_Pt)까지 0 으로 채움 "
                          "(0=채우지 않음)")
+    ap.add_argument("--report", metavar="FILE",
+                    help="집계 분석 리포트 파일 (기본: <out>_report.txt)")
+    ap.add_argument("--report-items", type=int, default=10,
+                    help="리포트에서 ITEM 별로 볼 상위 ITEM 수")
     ap.add_argument("--plot", metavar="DIR",
                     help="곡선 PNG 저장 폴더 (matplotlib 필요)")
     ap.add_argument("--plot-all", action="store_true",
@@ -485,6 +728,7 @@ def main(argv=None):
     diag = {"nsnap": {}, "ratio": [], "depth": [], "npts": [],
             "tail_at_end": 0, "n_nolatch": 0}
     pairs = []
+    feats = []
     n_vt_chg = n_vh_chg = n_plot = 0
 
     with open(a.out, "w", newline="", encoding="utf-8") as fo:
@@ -516,6 +760,7 @@ def main(argv=None):
                           "NVT": res["VT"], "NVH": res["VH"]})
             w.writerow([fmt(x) for x in row])
 
+            feats.append(curve_features(c, ev, leg))
             ns = min(res["N_SNAP"], 4)
             diag["nsnap"][ns] = diag["nsnap"].get(ns, 0) + 1
             diag["npts"].append(len(c["v"]))
@@ -559,6 +804,11 @@ def main(argv=None):
               % pct_str(diag["depth"]))
         print("    valley 이후 최고점이 마지막 측정점 : %d 개"
               % diag["tail_at_end"])
+
+    rp = a.report or (os.path.splitext(a.out)[0] + "_report.txt")
+    with open(rp, "w", encoding="utf-8") as fr:
+        fr.write("\n".join(build_report(feats, a.report_items)) + "\n")
+    print("\n분석 리포트 → %s" % rp)
     return 0
 
 

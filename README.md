@@ -65,6 +65,20 @@ python3 latchup_rejudge.py examples/sample_lup.log --plot plots   # 합성 예�
 
 실행이 끝나면 `[진단]` 요약(측정점 수, snapback 수 분포, `NO_LATCH`의 `RERISE_RATIO` 분포)이 함께 나옵니다. 기준값을 정할 때 씁니다.
 
+## 분석 리포트 (`<out>_report.txt`)
+
+칩 ID나 원시값 없이 집계 통계만 담습니다. 데이터를 밖으로 못 내는 환경에서 판정 규칙을 정할 때 씁니다.
+
+| 절 | 내용 |
+|---|---|
+| [1] | sweep 종료 방식 (끝까지 측정 vs 중간 종료, 마지막 V/I) |
+| [2] | k번째 snapback의 peak V, peak 전류, depth 분포 |
+| [3] | snapback 전류가 decade 경계(SMU range 전환)에 몰리는지 검사 |
+| [4] | LEGACY VT를 snapback 개수(0 / 1 / 2개 이상)로 나눈 분포 |
+| [5] | 규칙 후보(LEGACY / FIRST / DEEPEST / LAST / MAXPEAK)별 VT·VH 분포, robust σ, bimodality coefficient |
+| [6] | ITEM별 규칙 비교 (ITEM 이름 대신 순번) |
+| [7] | 곡선이 가장 많은 ITEM의 규칙별 VT 텍스트 히스토그램 |
+
 ## 출력 CSV
 
 | 컬럼 | 내용 |
