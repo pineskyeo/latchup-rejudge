@@ -253,6 +253,12 @@ def fmt(x):
     return str(x)
 
 
+def diff(new, old):
+    if new is None or old is None:
+        return None
+    return new - old
+
+
 def same(a, b, tol=1e-9):
     if a is None or b is None:
         return a is None and b is None
@@ -270,6 +276,20 @@ def pct_str(xs, ps=(10, 50, 90)):
     return " / ".join(out)
 
 
+def _pt(leg_or_res, key_v, key_i, key_num):
+    """(V, I, NUM) 또는 None."""
+    if leg_or_res.get(key_v) is None:
+        return None
+    return (leg_or_res[key_v], leg_or_res.get(key_i), leg_or_res.get(key_num))
+
+
+def _pt_str(pt):
+    if pt is None:
+        return "-"
+    v, i, num = pt
+    return "%.3f V @ %.3g A (NUM %s)" % (v, abs(i) if i else 0.0, num)
+
+
 def plot_curve(c, leg, res, ev, sel, path):
     import matplotlib
     matplotlib.use("Agg")
@@ -277,26 +297,66 @@ def plot_curve(c, leg, res, ev, sel, path):
 
     x = [abs(a) if a != 0 else float("nan") for a in c["i"]]
     v = c["v"]
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(x, v, "-", color="0.55", lw=1)
-    ax.plot(x, v, ".", color="0.35", ms=3)
+    n = len(v)
+
+    def xy(num):
+        if num is None or not (1 <= num <= n):
+            return None
+        return x[num - 1], v[num - 1]
+
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    ax.plot(x, v, "-", color="0.6", lw=1)
+    ax.plot(x, v, ".", color="0.4", ms=3)
     for k, (p, q) in enumerate(ev):
-        ax.plot(x[p], v[p], "^", color="tab:orange", ms=8,
+        ax.plot(x[p], v[p], "^", color="tab:orange", ms=7, alpha=0.8,
                 label="snapback peak" if k == 0 else None)
-        ax.plot(x[q], v[q], "v", color="tab:orange", ms=8,
+        ax.plot(x[q], v[q], "v", color="tab:orange", ms=7, alpha=0.8,
                 label="snapback valley" if k == 0 else None)
-    if leg["VT_NUM"] is not None and leg["VT_NUM"] - 1 < len(v):
-        j = leg["VT_NUM"] - 1
-        ax.plot(x[j], v[j], "s", mfc="none", mec="tab:blue", ms=12, mew=1.5,
-                label="LEGACY VT")
-    if leg["VH_NUM"] is not None and leg["VH_NUM"] - 1 < len(v):
-        j = leg["VH_NUM"] - 1
-        ax.plot(x[j], v[j], "D", mfc="none", mec="tab:blue", ms=12, mew=1.5,
-                label="LEGACY VH")
+
+    lvt, lvh = xy(leg["VT_NUM"]), xy(leg["VH_NUM"])
+    nvt, nvh = xy(res["VT_NUM"]), xy(res["VH_NUM"])
+    if lvt:
+        ax.plot(*lvt, marker="s", mfc="none", mec="tab:blue", ms=13, mew=2,
+                ls="none", label="LEGACY VT")
+    if lvh:
+        ax.plot(*lvh, marker="D", mfc="none", mec="tab:blue", ms=12, mew=2,
+                ls="none", label="LEGACY VH")
+    if nvt:
+        ax.plot(*nvt, marker="o", color="tab:red", ms=10, ls="none",
+                label="NEW VT")
+    if nvh:
+        ax.plot(*nvh, marker="o", color="tab:green", ms=10, ls="none",
+                label="NEW VH")
+    # legacy -> new 이동 화살표
+    for a0, a1, col in ((lvt, nvt, "tab:red"), (lvh, nvh, "tab:green")):
+        if a0 and a1 and a0 != a1:
+            ax.annotate("", xy=a1, xytext=a0,
+                        arrowprops=dict(arrowstyle="->", color=col, lw=1.6,
+                                        connectionstyle="arc3,rad=0.2"))
+    # 래치가 아니면 valley 이후 최고점(회복 판정 근거)을 표시
+    if res["STATUS"] == "NO_LATCH":
+        t = xy(res["TAIL_VMAX_NUM"])
+        if t:
+            ax.plot(*t, marker="x", color="tab:purple", ms=11, mew=2,
+                    ls="none", label="max after valley")
+
+    lines = [
+        "LEGACY VT  %s" % _pt_str(_pt(leg, "VT", "VT_I", "VT_NUM")),
+        "LEGACY VH  %s" % _pt_str(_pt(leg, "VH", "VH_I", "VH_NUM")),
+    ]
     if sel:
-        p, h = sel
-        ax.plot(x[p], v[p], "o", color="tab:red", ms=10, label="NEW VT")
-        ax.plot(x[h], v[h], "o", color="tab:green", ms=10, label="NEW VH")
+        lines += [
+            "NEW    VT  %s" % _pt_str(_pt(res, "VT", "VT_I", "VT_NUM")),
+            "NEW    VH  %s" % _pt_str(_pt(res, "VH", "VH_I", "VH_NUM")),
+        ]
+    else:
+        lines.append("NEW        %s  (snap %d, rerise ratio %s)"
+                     % (res["STATUS"], res["N_SNAP"],
+                        fmt(res["RERISE_RATIO"]) or "-"))
+    ax.text(0.01, 0.99, "\n".join(lines), transform=ax.transAxes,
+            va="top", ha="left", fontsize=8, family="monospace",
+            bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
+
     ax.set_xscale("log")
     ax.set_xlabel("|If| (A)")
     ax.set_ylabel("V1 (V)")
@@ -306,7 +366,56 @@ def plot_curve(c, leg, res, ev, sel, path):
                  fontsize=9)
     ax.grid(True, which="both", alpha=0.3)
     if ax.get_legend_handles_labels()[0]:
+        ax.legend(fontsize=8, loc="lower right")
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+
+
+def plot_summary(pairs, path):
+    """전체 곡선의 legacy vs new VT/VH 분포와 이동."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, axs = plt.subplots(1, 3, figsize=(15, 4.6))
+    for ax, name in zip(axs[:2], ("VT", "VH")):
+        lg = [p["L" + name] for p in pairs if p["L" + name] is not None]
+        nw = [p["N" + name] for p in pairs if p["N" + name] is not None]
+        allv = lg + nw
+        if not allv:
+            ax.set_title("%s: no data" % name)
+            continue
+        lo, hi = min(allv), max(allv)
+        if hi <= lo:
+            hi = lo + 1.0
+        bins = [lo + (hi - lo) * k / 60.0 for k in range(61)]
+        ax.hist(lg, bins=bins, histtype="step", lw=1.8, color="tab:blue",
+                label="LEGACY %s (n=%d)" % (name, len(lg)))
+        ax.hist(nw, bins=bins, histtype="step", lw=1.8, color="tab:red",
+                label="NEW %s (n=%d)" % (name, len(nw)))
+        ax.set_xlabel("%s (V)" % name)
+        ax.set_ylabel("count")
+        ax.set_title("%s distribution: legacy vs new" % name)
         ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+    ax = axs[2]
+    both = [(p["LVT"], p["NVT"]) for p in pairs
+            if p["LVT"] is not None and p["NVT"] is not None]
+    if both:
+        lx = [a for a, _ in both]
+        ny = [b for _, b in both]
+        ax.plot(lx, ny, ".", ms=4, alpha=0.5, color="tab:purple")
+        lo, hi = min(lx + ny), max(lx + ny)
+        ax.plot([lo, hi], [lo, hi], "--", color="0.5", lw=1, label="no change")
+        ax.legend(fontsize=8)
+    n_lost = sum(1 for p in pairs if p["LVT"] is not None and p["NVT"] is None)
+    ax.set_xlabel("LEGACY VT (V)")
+    ax.set_ylabel("NEW VT (V)")
+    ax.set_title("VT moved (n=%d), legacy VT -> no latch: %d"
+                 % (len(both), n_lost))
+    ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(path, dpi=110)
     plt.close(fig)
@@ -370,10 +479,12 @@ def main(argv=None):
             "VT1", "VT1_I", "VH1", "VH1_I",
             "HOLD_PTS", "RERISE_RATIO", "SNAP_DEPTH", "TAIL_VMAX",
             "TAIL_VMAX_NUM", "LAST_VT", "LAST_VH", "V_LAST",
-            "VT_CHANGED", "VH_CHANGED"])
+            "VT_CHANGED", "VH_CHANGED", "VT_SHIFT", "VH_SHIFT",
+            "VT_NUM_SHIFT", "VH_NUM_SHIFT"])
     stats = OrderedDict()
     diag = {"nsnap": {}, "ratio": [], "depth": [], "npts": [],
             "tail_at_end": 0, "n_nolatch": 0}
+    pairs = []
     n_vt_chg = n_vh_chg = n_plot = 0
 
     with open(a.out, "w", newline="", encoding="utf-8") as fo:
@@ -398,6 +509,11 @@ def main(argv=None):
                     "TAIL_VMAX", "TAIL_VMAX_NUM", "LAST_VT", "LAST_VH",
                     "V_LAST")]
             row += ["Y" if vt_chg else "", "Y" if vh_chg else ""]
+            row += [diff(res["VT"], leg["VT"]), diff(res["VH"], leg["VH"]),
+                    diff(res["VT_NUM"], leg["VT_NUM"]),
+                    diff(res["VH_NUM"], leg["VH_NUM"])]
+            pairs.append({"LVT": leg["VT"], "LVH": leg["VH"],
+                          "NVT": res["VT"], "NVH": res["VH"]})
             w.writerow([fmt(x) for x in row])
 
             ns = min(res["N_SNAP"], 4)
@@ -425,7 +541,10 @@ def main(argv=None):
         print("  %-18s %5d" % (k, n))
     print("  legacy 대비 VT 변경 %d, VH 변경 %d" % (n_vt_chg, n_vh_chg))
     if can_plot:
-        print("  plot %d 개 → %s" % (n_plot, a.plot))
+        sp = os.path.join(a.plot, "_summary_legacy_vs_new.png")
+        plot_summary(pairs, sp)
+        print("  plot %d 개 + 요약 %s → %s" % (n_plot, os.path.basename(sp),
+                                            a.plot))
 
     print("\n[진단]")
     print("  측정점 수 p10/p50/p90 : %s" % pct_str(diag["npts"]))

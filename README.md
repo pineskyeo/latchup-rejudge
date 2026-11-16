@@ -78,6 +78,16 @@ python3 latchup_rejudge.py examples/sample_lup.log --plot plots   # 합성 예�
 | `SNAP_DEPTH`, `TAIL_VMAX`, `TAIL_VMAX_NUM` | 진단: 판정에 쓴 snapback의 depth, valley 이후 최고 전압과 그 NUM |
 | `LAST_VT`, `LAST_VH`, `V_LAST` | 진단: 마지막 snapback의 peak / valley, 마지막 측정 전압 |
 | `VT_CHANGED`, `VH_CHANGED` | legacy와 다르면 `Y` |
+| `VT_SHIFT`, `VH_SHIFT` | 새 값 − legacy 값 (V) |
+| `VT_NUM_SHIFT`, `VH_NUM_SHIFT` | 새 NUM − legacy NUM (몇 step 뒤로 옮겨졌는지) |
+
+## 그래프 (`--plot`)
+
+- 곡선별 PNG:
+  - legacy VT/VH는 파란 네모/마름모, 새 VT/VH는 빨간/초록 원으로 표시합니다.
+  - legacy에서 새 값으로 옮겨진 경우 화살표로 잇고, 왼쪽 위에 두 판정의 V, I, NUM을 적습니다.
+  - `NO_LATCH`는 valley 이후 최고점(회복으로 판정한 근거)을 보라색 X로 표시합니다.
+- `_summary_legacy_vs_new.png`: 전체 곡선의 VT/VH 분포를 legacy와 새 판정으로 겹쳐 그리고, legacy VT 대비 새 VT 산점도를 함께 그립니다. Trend가 두 그룹으로 갈렸던 것이 한 그룹으로 모이는지 확인할 때 씁니다.
 
 ## 예제
 
