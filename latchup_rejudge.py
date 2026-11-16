@@ -522,8 +522,10 @@ def robust(xs):
     med = _q(xs, 50)
     mad = sorted(abs(x - med) for x in xs)
     rs = 1.4826 * _q(mad, 50)
+    band = max(5.0 * rs, 0.05)
+    out = sum(1 for x in xs if abs(x - med) > band)
     return {"n": n, "med": med, "rs": rs, "p10": _q(xs, 10),
-            "p90": _q(xs, 90), "bc": bimodality(xs)}
+            "p90": _q(xs, 90), "bc": bimodality(xs), "out": out}
 
 
 def bimodality(xs):
@@ -567,8 +569,9 @@ def fmt_stat(st):
     if not st:
         return "n=0"
     bc = "-" if st["bc"] is None else "%.2f" % st["bc"]
-    return ("n=%5d  med=%7.3f  rσ=%6.3f  p10=%7.3f  p90=%7.3f  BC=%s%s"
-            % (st["n"], st["med"], st["rs"], st["p10"], st["p90"], bc,
+    return ("n=%5d  med=%7.3f  rσ=%6.3f  p10=%7.3f  p90=%7.3f  out=%4d  BC=%s%s"
+            % (st["n"], st["med"], st["rs"], st["p10"], st["p90"], st["out"],
+               bc,
                " (쌍봉?)" if st["bc"] is not None and st["bc"] > 0.555
                else ""))
 
@@ -653,8 +656,9 @@ def build_report(feats, top_items=10):
     # [5] 판정 규칙 후보 비교 (전체)
     add("")
     add("[5] 판정 규칙 후보별 VT / VH 분포 (전체 곡선)")
-    add("  rσ = robust sigma(1.4826*MAD). BC = bimodality coefficient,"
-        " 0.555 초과면 쌍봉 의심.")
+    add("  rσ = robust sigma(1.4826*MAD). out = |VT-med| > max(5rσ, 0.05V) 개수.")
+    add("  BC = bimodality coefficient, 0.555 초과면 쌍봉 의심. 단 소수 outlier 에도"
+        " 커지므로 rσ 가 작으면 out 과 히스토그램을 우선할 것.")
     add("  ITEM 이 여러 개면 ITEM 차이 때문에 섞여 보일 수 있으니 [6] 도 함께 볼 것.")
     for r in RULES:
         add("  %-8s %s" % (r, RULE_DESC[r]))
@@ -683,15 +687,15 @@ def build_report(feats, top_items=10):
                 [f["rule"][r][0] for f in grp]))))
 
     # [7] 가장 큰 ITEM 의 규칙별 VT 히스토그램
-    if order:
-        grp = items[order[0]]
+    for hi_idx, it in enumerate(order[:2], 1):
+        grp = items[it]
         allv = [f["rule"][r][0] for f in grp for r in RULES
                 if f["rule"][r][0] is not None]
         if allv:
             lo, hi = min(allv), max(allv)
             add("")
-            add("[7] ITEM#1 규칙별 VT 히스토그램 (공통 축 %.3f ~ %.3f V)"
-                % (lo, hi))
+            add("[7] ITEM#%d 규칙별 VT 히스토그램 (공통 축 %.3f ~ %.3f V)"
+                % (hi_idx, lo, hi))
             for r in RULES:
                 add("  -- %s" % r)
                 L.extend(ascii_hist([f["rule"][r][0] for f in grp], lo, hi))
