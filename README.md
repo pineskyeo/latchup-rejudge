@@ -63,6 +63,8 @@ python3 latchup_rejudge.py examples/sample_lup.log --plot plots   # 합성 예�
 - 노이즈가 snapback으로 잡히면 `--dv-abs`나 `--dv-rel`을 올립니다.
 - 결과 CSV의 `RERISE_RATIO` 분포를 보고 정하면 됩니다.
 
+실행이 끝나면 `[진단]` 요약(측정점 수, snapback 수 분포, `NO_LATCH`의 `RERISE_RATIO` 분포)이 함께 나옵니다. 기준값을 정할 때 씁니다.
+
 ## 출력 CSV
 
 | 컬럼 | 내용 |
@@ -73,6 +75,8 @@ python3 latchup_rejudge.py examples/sample_lup.log --plot plots   # 합성 예�
 | `VT/VH` (`_I`, `_NUM`) | 새 판정 trigger / hold 전압, 그때의 전류, NUM |
 | `VT1/VH1` (`_I`) | 1차 snapback의 peak / valley |
 | `HOLD_PTS`, `RERISE_RATIO` | 래치 후 측정점 수, 재상승폭 ÷ depth |
+| `SNAP_DEPTH`, `TAIL_VMAX`, `TAIL_VMAX_NUM` | 진단: 판정에 쓴 snapback의 depth, valley 이후 최고 전압과 그 NUM |
+| `LAST_VT`, `LAST_VH`, `V_LAST` | 진단: 마지막 snapback의 peak / valley, 마지막 측정 전압 |
 | `VT_CHANGED`, `VH_CHANGED` | legacy와 다르면 `Y` |
 
 ## 예제

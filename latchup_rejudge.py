@@ -189,6 +189,8 @@ def new_judge(v, i, find_start, dv_abs, dv_rel, recover, min_hold_pts):
         ("VH", None), ("VH_I", None), ("VH_NUM", None),
         ("VT1", None), ("VT1_I", None), ("VH1", None), ("VH1_I", None),
         ("HOLD_PTS", None), ("RERISE_RATIO", None),
+        ("SNAP_DEPTH", None), ("TAIL_VMAX", None), ("TAIL_VMAX_NUM", None),
+        ("LAST_VT", None), ("LAST_VH", None), ("V_LAST", v[-1] if v else None),
     ])
     ev = find_snapbacks(vp, max(0, find_start), dv_abs, dv_rel)
     res["N_SNAP"] = len(ev)
@@ -198,6 +200,7 @@ def new_judge(v, i, find_start, dv_abs, dv_rel, recover, min_hold_pts):
     p0, q0 = ev[0]
     res["VT1"], res["VT1_I"] = v[p0], i[p0]
     res["VH1"], res["VH1_I"] = v[q0], i[q0]
+    res["LAST_VT"], res["LAST_VH"] = v[ev[-1][0]], v[ev[-1][1]]
 
     chosen = None
     ratios = []
@@ -209,6 +212,14 @@ def new_judge(v, i, find_start, dv_abs, dv_rel, recover, min_hold_pts):
         if ratio <= recover:
             chosen = idx
             break
+
+    # 진단: 판정에 쓴 snapback(래치면 채택된 것, 아니면 비율이 가장 작은 것)의
+    # depth 와 valley 이후 최고점 위치
+    di = chosen if chosen is not None else ratios.index(min(ratios))
+    dp, dq = ev[di]
+    t = max(range(dq, n), key=lambda k: vp[k])
+    res["SNAP_DEPTH"] = vp[dp] - vp[dq]
+    res["TAIL_VMAX"], res["TAIL_VMAX_NUM"] = v[t], t + 1
 
     if chosen is None:
         res["STATUS"] = "NO_LATCH"
@@ -246,6 +257,17 @@ def same(a, b, tol=1e-9):
     if a is None or b is None:
         return a is None and b is None
     return abs(a - b) <= tol * max(1.0, abs(a), abs(b))
+
+
+def pct_str(xs, ps=(10, 50, 90)):
+    xs = sorted(x for x in xs if x is not None and not math.isinf(x))
+    if not xs:
+        return "-"
+    out = []
+    for p in ps:
+        k = min(len(xs) - 1, max(0, int(round(p / 100.0 * (len(xs) - 1)))))
+        out.append("%.3g" % xs[k])
+    return " / ".join(out)
 
 
 def plot_curve(c, leg, res, ev, sel, path):
@@ -346,8 +368,12 @@ def main(argv=None):
             "STATUS", "N_SNAP",
             "VT", "VT_I", "VT_NUM", "VH", "VH_I", "VH_NUM",
             "VT1", "VT1_I", "VH1", "VH1_I",
-            "HOLD_PTS", "RERISE_RATIO", "VT_CHANGED", "VH_CHANGED"])
+            "HOLD_PTS", "RERISE_RATIO", "SNAP_DEPTH", "TAIL_VMAX",
+            "TAIL_VMAX_NUM", "LAST_VT", "LAST_VH", "V_LAST",
+            "VT_CHANGED", "VH_CHANGED"])
     stats = OrderedDict()
+    diag = {"nsnap": {}, "ratio": [], "depth": [], "npts": [],
+            "tail_at_end": 0, "n_nolatch": 0}
     n_vt_chg = n_vh_chg = n_plot = 0
 
     with open(a.out, "w", newline="", encoding="utf-8") as fo:
@@ -368,9 +394,21 @@ def main(argv=None):
                    leg["VH"], leg["VH_I"], leg["VH_NUM"]]
             row += [res[k] for k in ("STATUS", "N_SNAP", "VT", "VT_I",
                     "VT_NUM", "VH", "VH_I", "VH_NUM", "VT1", "VT1_I", "VH1",
-                    "VH1_I", "HOLD_PTS", "RERISE_RATIO")]
+                    "VH1_I", "HOLD_PTS", "RERISE_RATIO", "SNAP_DEPTH",
+                    "TAIL_VMAX", "TAIL_VMAX_NUM", "LAST_VT", "LAST_VH",
+                    "V_LAST")]
             row += ["Y" if vt_chg else "", "Y" if vh_chg else ""]
             w.writerow([fmt(x) for x in row])
+
+            ns = min(res["N_SNAP"], 4)
+            diag["nsnap"][ns] = diag["nsnap"].get(ns, 0) + 1
+            diag["npts"].append(len(c["v"]))
+            if res["STATUS"] == "NO_LATCH":
+                diag["n_nolatch"] += 1
+                diag["ratio"].append(res["RERISE_RATIO"])
+                diag["depth"].append(res["SNAP_DEPTH"])
+                if res["TAIL_VMAX_NUM"] == len(c["v"]):
+                    diag["tail_at_end"] += 1
 
             interesting = (res["STATUS"] != "LATCH") or vt_chg or vh_chg
             if can_plot and n_plot < a.plot_max and (a.plot_all or interesting):
@@ -388,6 +426,20 @@ def main(argv=None):
     print("  legacy 대비 VT 변경 %d, VH 변경 %d" % (n_vt_chg, n_vh_chg))
     if can_plot:
         print("  plot %d 개 → %s" % (n_plot, a.plot))
+
+    print("\n[진단]")
+    print("  측정점 수 p10/p50/p90 : %s" % pct_str(diag["npts"]))
+    print("  snapback 수 분포      : %s" % ", ".join(
+        "%s개=%d" % ("4+" if k == 4 else k, diag["nsnap"][k])
+        for k in sorted(diag["nsnap"])))
+    if diag["n_nolatch"]:
+        print("  NO_LATCH %d 개 중" % diag["n_nolatch"])
+        print("    RERISE_RATIO p10/p25/p50/p75/p90 : %s"
+              % pct_str(diag["ratio"], (10, 25, 50, 75, 90)))
+        print("    SNAP_DEPTH(V) p10/p50/p90        : %s"
+              % pct_str(diag["depth"]))
+        print("    valley 이후 최고점이 마지막 측정점 : %d 개"
+              % diag["tail_at_end"])
     return 0
 
 
