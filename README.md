@@ -75,9 +75,12 @@ VH는 고른 snapback의 valley입니다. `VT_ORDER` 컬럼에 몇 번째 snapba
 
 실행이 끝나면 `[진단]` 요약(측정점 수, snapback 수 분포, `NO_LATCH`의 `RERISE_RATIO` 분포)이 함께 나옵니다. 기준값을 정할 때 씁니다.
 
-## 칩별 변경 내역
+## 칩별 legacy → 새 판정
 
-legacy와 값이 달라진 칩을 ITEM별로 콘솔에 보여주고(`--show`, 기본 ITEM당 10개), 전체는 `<out>_changes.csv`로 저장합니다.
+모든 칩의 legacy VT/VH와 새 VT/VH를 나란히 냅니다.
+- `<out>_before_after.csv`: 전체 칩 (변경 여부 `CHANGED` Y/N, 유형 포함)
+- `<out>_changes.csv`: 값이 바뀐 칩만
+- 콘솔: ITEM별로 바뀐 칩을 먼저, 그다음 안 바뀐 칩을 `--show`개(기본 10)까지 표시. `--show 0`이면 전부.
 
 ```
   ITEM B_double : 변경 1 / 1
@@ -95,6 +98,7 @@ legacy와 값이 달라진 칩을 ITEM별로 콘솔에 보여주고(`--show`, �
 | `legacy만 VT (snapback 아님)` | snapback이 없는데 legacy가 VT를 냄 |
 | `새로 VT 검출` | legacy는 VT가 없는데 새 판정은 있음 |
 | `VT 같음 (VH만 변경)` | VT는 같고 VH만 다름 |
+| `변경 없음` / `둘 다 VT 없음` | 값이 같음 |
 
 ## ITEM별 legacy → 새 판정 비교
 
