@@ -586,6 +586,97 @@ def fmt_stat(st):
                else ""))
 
 
+def item_compare(recs, rule):
+    """ITEM 별 legacy vs 새 판정 비교. 실제 ITEM 이름 사용.
+
+    recs: [{"item", "lvt", "lvh", "nvt", "nvh"}] (극성 정규화 값)
+    반환: (출력 줄 목록, CSV 행 목록)
+    """
+    items = OrderedDict()
+    for r in recs:
+        items.setdefault(r["item"], []).append(r)
+    order = sorted(items, key=lambda k: -len(items[k]))
+
+    def width(st):
+        return st["p90"] - st["p10"] if st else None
+
+    def verdict(lo, nw):
+        if not lo and not nw:
+            return "VT 없음"
+        if not lo or not nw:
+            return "비교 불가"
+        wl, wn = width(lo), width(nw)
+        better = (nw["rs"] < 0.8 * lo["rs"] or nw["out"] < 0.7 * lo["out"]
+                  or (wl > 0 and wn < 0.8 * wl))
+        worse = (nw["rs"] > 1.2 * lo["rs"] + 1e-4
+                 or (wl > 0 and wn > 1.2 * wl + 1e-4)
+                 or nw["out"] > 1.5 * lo["out"] + 2)
+        if better and not worse:
+            return "개선"
+        if worse and not better:
+            return "악화"
+        if better and worse:
+            return "혼재"
+        return "동일"
+
+    lines = []
+    rows = []
+    hdr = ("%-4s %-24s %6s | %-34s | %-34s | %6s %6s | %s"
+           % ("#", "ITEM", "곡선", "LEGACY VT med / rσ / p10~p90 / out",
+              "NEW(%s) VT med / rσ / p10~p90 / out" % rule, "VT변경", "Δmed",
+              "판정"))
+    lines.append(hdr)
+    lines.append("-" * len(hdr))
+
+    def cell(st):
+        if not st:
+            return "%-34s" % "-"
+        return "%-34s" % ("%.3f / %.3f / %.3f~%.3f / %d"
+                          % (st["med"], st["rs"], st["p10"], st["p90"],
+                             st["out"]))
+
+    for idx, it in enumerate(order, 1):
+        g = items[it]
+        res = {}
+        for key in ("vt", "vh"):
+            lo = robust([r["l" + key] for r in g])
+            nw = robust([r["n" + key] for r in g])
+            nchg = sum(1 for r in g if not same(r["l" + key], r["n" + key]))
+            dmed = (nw["med"] - lo["med"]) if lo and nw else None
+            vd = verdict(lo, nw)
+            if (vd == "동일" and dmed is not None
+                    and abs(dmed) > max(2.0 * lo["rs"], 0.05)):
+                vd = "중앙값 이동"
+            res[key] = (lo, nw, nchg, dmed, vd)
+        lo, nw, nchg, dmed, vd = res["vt"]
+        lines.append("%-4s %-24s %6d | %s | %s | %6d %6s | %s"
+                     % ("#%d" % idx, it[:24], len(g), cell(lo), cell(nw),
+                        nchg, "-" if dmed is None else "%+.3f" % dmed, vd))
+        for key in ("vt", "vh"):
+            lo, nw, nchg, dmed, vd = res[key]
+            rows.append([idx, it, key.upper(), len(g)]
+                        + ([lo["n"], lo["med"], lo["rs"], lo["p10"], lo["p90"],
+                            lo["out"]] if lo else [0, "", "", "", "", ""])
+                        + ([nw["n"], nw["med"], nw["rs"], nw["p10"], nw["p90"],
+                            nw["out"]] if nw else [0, "", "", "", "", ""])
+                        + [nchg, dmed, vd])
+    lines.append("")
+    lines.append("  판정: rσ 또는 p10~p90 폭이 20% 넘게 줄거나 out 이 30% 넘게 줄면 개선,"
+                 " 반대로 늘면 악화.")
+    lines.append("  중앙값 이동 = 산포는 비슷한데 중앙값이 max(2rσ, 0.05V) 넘게 바뀜.")
+    lines.append("  out = 중앙값에서 max(5rσ, 0.05V) 넘게 벗어난 곡선 수."
+                 " VT변경 = legacy 와 값이 다른 곡선 수.")
+    lines.append("  # 번호는 분석 리포트 [6] 의 ITEM# 과 같음.")
+    return lines, rows
+
+
+ITEM_CMP_COLS = ["NO", "ITEM", "PARAM", "N_CURVES",
+                 "LEG_N", "LEG_MED", "LEG_RSIGMA", "LEG_P10", "LEG_P90",
+                 "LEG_OUT",
+                 "NEW_N", "NEW_MED", "NEW_RSIGMA", "NEW_P10", "NEW_P90",
+                 "NEW_OUT", "N_CHANGED", "DELTA_MED", "VERDICT"]
+
+
 def build_report(feats, top_items=10):
     L = []
     add = L.append
@@ -888,6 +979,7 @@ def main(argv=None):
             "tail_at_end": 0, "n_nolatch": 0}
     pairs = []
     feats = []
+    cmp_recs = []
     n_vt_chg = n_vh_chg = n_plot = 0
 
     with open(a.out, "w", newline="", encoding="utf-8") as fo:
@@ -921,6 +1013,13 @@ def main(argv=None):
             w.writerow([fmt(x) for x in row])
 
             feats.append(curve_features(c, ev, leg, a.main_frac))
+            pol = polarity(c["i"])
+            cmp_recs.append({
+                "item": c["key"][9],
+                "lvt": None if leg["VT"] is None else leg["VT"] * pol,
+                "lvh": None if leg["VH"] is None else leg["VH"] * pol,
+                "nvt": None if res["VT"] is None else res["VT"] * pol,
+                "nvh": None if res["VH"] is None else res["VH"] * pol})
             ns = min(res["N_SNAP"], 4)
             diag["nsnap"][ns] = diag["nsnap"].get(ns, 0) + 1
             diag["npts"].append(len(c["v"]))
@@ -968,7 +1067,20 @@ def main(argv=None):
         print("    valley 이후 최고점이 마지막 측정점 : %d 개"
               % diag["tail_at_end"])
 
-    rp = a.report or (os.path.splitext(a.out)[0] + "_report.txt")
+    base = os.path.splitext(a.out)[0]
+    cmp_lines, cmp_rows = item_compare(cmp_recs, a.rule)
+    print("\n[ITEM 별 VT: legacy → 새 판정]  (전압은 극성 정규화 값)")
+    for ln in cmp_lines:
+        print("  " + ln)
+    cp = base + "_item_compare.csv"
+    with open(cp, "w", newline="", encoding="utf-8") as fc:
+        wc = csv.writer(fc)
+        wc.writerow(ITEM_CMP_COLS)
+        for r in cmp_rows:
+            wc.writerow([fmt(x) for x in r])
+    print("\nITEM 별 비교 (VT, VH) → %s" % cp)
+
+    rp = a.report or (base + "_report.txt")
     with open(rp, "w", encoding="utf-8") as fr:
         fr.write("\n".join(build_report(feats, a.report_items)) + "\n")
     print("\n분석 리포트 → %s" % rp)

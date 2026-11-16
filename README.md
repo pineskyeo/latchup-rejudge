@@ -75,6 +75,17 @@ VH는 고른 snapback의 valley입니다. `VT_ORDER` 컬럼에 몇 번째 snapba
 
 실행이 끝나면 `[진단]` 요약(측정점 수, snapback 수 분포, `NO_LATCH`의 `RERISE_RATIO` 분포)이 함께 나옵니다. 기준값을 정할 때 씁니다.
 
+## ITEM별 legacy → 새 판정 비교
+
+실행하면 콘솔에 ITEM별 표가 나오고 `<out>_item_compare.csv`(VT, VH)로도 저장됩니다. 실제 ITEM 이름을 씁니다.
+
+| 열 | 내용 |
+|---|---|
+| LEGACY / NEW | 중앙값 / rσ / p10~p90 / out |
+| VT변경 | legacy와 값이 다른 곡선 수 |
+| Δmed | 새 중앙값 − legacy 중앙값 |
+| 판정 | 개선(rσ·폭 20% 넘게 감소 또는 out 30% 넘게 감소) / 악화 / 혼재 / 동일 / 중앙값 이동 |
+
 ## 분석 리포트 (`<out>_report.txt`)
 
 칩 ID나 원시값 없이 집계 통계만 담습니다. 데이터를 밖으로 못 내는 환경에서 판정 규칙을 정할 때 씁니다.
