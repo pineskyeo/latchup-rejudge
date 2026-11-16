@@ -45,6 +45,16 @@ python3 latchup_rejudge.py examples/sample_lup.log --plot plots   # 합성 예�
 | `NO_TRIGGER` | snapback 없음 |
 | `*_SHORT` | 래치 뒤 남은 측정점이 `--min-hold-pts` 미만이라 유지 확인이 부족함 |
 
+### VT 선택 규칙 (`--rule`, 기본 `main`)
+
+| 규칙 | VT로 쓰는 snapback | STATUS |
+|---|---|---|
+| `main` (기본) | depth가 최대 depth × `--main-frac`(0.5) 이상인 snapback 중 peak V가 가장 높은 것. 작은 pre-trigger와 래치 후 Ron 구간의 작은 흔들림을 함께 거릅니다 | `TRIGGER` (snapback 1개) / `TRIGGER_MULTI` (여러 개) / `NO_TRIGGER` |
+| `maxpeak`, `deepest`, `first`, `last` | peak V 최고 / 가장 깊음 / 첫 번째 / 마지막 | 위와 같음 |
+| `sustain` | 위 "판정 방법"의 래치 유지 확인. 래치 후 V가 Ron 때문에 크게 오르는 소자에는 맞지 않습니다 | `LATCH` / `LATCH_2ND` / `NO_LATCH` / `NO_TRIGGER` |
+
+VH는 고른 snapback의 valley입니다. `VT_ORDER` 컬럼에 몇 번째 snapback이 선택됐는지 나옵니다.
+
 ### 옵션
 
 | 옵션 | 기본값 | 설명 |

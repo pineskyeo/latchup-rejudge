@@ -176,7 +176,27 @@ def find_snapbacks(vp, start, dv_abs, dv_rel):
     return events
 
 
-def new_judge(v, i, find_start, dv_abs, dv_rel, recover, min_hold_pts):
+def pick_snap(vp, ev, rule, main_frac=0.5):
+    """규칙에 따라 VT 로 쓸 snapback index 를 고른다 (ev 는 비어 있지 않음)."""
+    depth = [vp[p] - vp[q] for p, q in ev]
+    if rule == "first":
+        return 0
+    if rule == "last":
+        return len(ev) - 1
+    if rule == "deepest":
+        return max(range(len(ev)), key=lambda k: depth[k])
+    if rule == "maxpeak":
+        return max(range(len(ev)), key=lambda k: vp[ev[k][0]])
+    if rule == "main":
+        # 주 snapback: depth 가 최대 depth 의 main_frac 이상인 것 중 peak V 최고
+        dmax = max(depth)
+        cand = [k for k in range(len(ev)) if depth[k] >= main_frac * dmax]
+        return max(cand, key=lambda k: vp[ev[k][0]])
+    raise ValueError("unknown rule: %s" % rule)
+
+
+def new_judge(v, i, find_start, dv_abs, dv_rel, recover, min_hold_pts,
+              rule="main", main_frac=0.5):
     n = len(v)
     # 극성: 음방향 주입이면 부호를 뒤집어서 판단하고 결과는 원래 부호로 출력
     nz = [x for x in i if x != 0.0]
@@ -191,6 +211,7 @@ def new_judge(v, i, find_start, dv_abs, dv_rel, recover, min_hold_pts):
         ("HOLD_PTS", None), ("RERISE_RATIO", None),
         ("SNAP_DEPTH", None), ("TAIL_VMAX", None), ("TAIL_VMAX_NUM", None),
         ("LAST_VT", None), ("LAST_VH", None), ("V_LAST", v[-1] if v else None),
+        ("VT_ORDER", None),
     ])
     ev = find_snapbacks(vp, max(0, find_start), dv_abs, dv_rel)
     res["N_SNAP"] = len(ev)
@@ -201,6 +222,22 @@ def new_judge(v, i, find_start, dv_abs, dv_rel, recover, min_hold_pts):
     res["VT1"], res["VT1_I"] = v[p0], i[p0]
     res["VH1"], res["VH1_I"] = v[q0], i[q0]
     res["LAST_VT"], res["LAST_VH"] = v[ev[-1][0]], v[ev[-1][1]]
+
+    if rule != "sustain":
+        k = pick_snap(vp, ev, rule, main_frac)
+        p, q = ev[k]
+        depth = vp[p] - vp[q]
+        t = max(range(q, n), key=lambda j: vp[j])
+        res["VT"], res["VT_I"], res["VT_NUM"] = v[p], i[p], p + 1
+        res["VH"], res["VH_I"], res["VH_NUM"] = v[q], i[q], q + 1
+        res["VT_ORDER"] = k + 1
+        res["HOLD_PTS"] = n - 1 - q
+        res["SNAP_DEPTH"] = depth
+        res["RERISE_RATIO"] = ((vp[t] - vp[q]) / depth if depth > 0
+                               else float("inf"))
+        res["TAIL_VMAX"], res["TAIL_VMAX_NUM"] = v[t], t + 1
+        res["STATUS"] = "TRIGGER" if len(ev) == 1 else "TRIGGER_MULTI"
+        return res, ev, (p, q)
 
     chosen = None
     ratios = []
@@ -424,13 +461,14 @@ def plot_summary(pairs, path):
 # --------------------------------------------------------------------------
 # 집계 분석 리포트 (원시 데이터 없이 공유 가능한 통계만 출력)
 # --------------------------------------------------------------------------
-RULES = ("LEGACY", "FIRST", "DEEPEST", "LAST", "MAXPEAK")
+RULES = ("LEGACY", "FIRST", "DEEPEST", "LAST", "MAXPEAK", "MAIN")
 RULE_DESC = OrderedDict([
     ("LEGACY", "현재 장비: dV 부호가 처음 바뀌는 점"),
     ("FIRST", "첫 번째 snapback"),
     ("DEEPEST", "가장 깊게 떨어지는 snapback"),
     ("LAST", "마지막 snapback"),
     ("MAXPEAK", "peak 전압이 가장 높은 snapback"),
+    ("MAIN", "주 snapback: depth >= 최대 depth*MAIN_FRAC 중 peak V 최고"),
 ])
 LOG_STEP = math.log10(1.05)
 
@@ -440,7 +478,7 @@ def polarity(i):
     return -1.0 if nz and sorted(nz)[len(nz) // 2] < 0 else 1.0
 
 
-def curve_features(c, ev, leg):
+def curve_features(c, ev, leg, main_frac=0.5):
     """한 곡선의 집계용 특징. 전압은 극성 정규화(양수 방향)."""
     pol = polarity(c["i"])
     vp = [x * pol for x in c["v"]]
@@ -459,6 +497,7 @@ def curve_features(c, ev, leg):
             "DEEPEST": max(snaps, key=lambda s: s["depth"]),
             "LAST": snaps[-1],
             "MAXPEAK": max(snaps, key=lambda s: s["vt"]),
+            "MAIN": snaps[pick_snap(vp, ev, "main", main_frac)],
         }
         for r, s_ in pick.items():
             rule[r] = (s_["vt"], s_["vh"])
@@ -673,6 +712,13 @@ def main(argv=None):
                     help="snapback 최소 drop / valley 재상승 인정폭 (V)")
     ap.add_argument("--dv-rel", type=float, default=0.03,
                     help="snapback 최소 drop 비율 (|Vpeak| 대비)")
+    ap.add_argument("--rule", default="main",
+                    choices=("main", "maxpeak", "deepest", "first", "last",
+                             "sustain"),
+                    help="VT 로 쓸 snapback 선택 규칙. main=주 snapback, "
+                         "sustain=래치 유지 확인(--recover 사용)")
+    ap.add_argument("--main-frac", type=float, default=0.5,
+                    help="main 규칙: 최대 depth 대비 이 비율 이상 snapback 만 후보")
     ap.add_argument("--recover", type=float, default=0.5,
                     help="valley 이후 재상승폭/snapback depth 가 이 값 초과면 "
                          "회복(가짜 trigger)으로 판정")
@@ -723,7 +769,7 @@ def main(argv=None):
             "HOLD_PTS", "RERISE_RATIO", "SNAP_DEPTH", "TAIL_VMAX",
             "TAIL_VMAX_NUM", "LAST_VT", "LAST_VH", "V_LAST",
             "VT_CHANGED", "VH_CHANGED", "VT_SHIFT", "VH_SHIFT",
-            "VT_NUM_SHIFT", "VH_NUM_SHIFT"])
+            "VT_NUM_SHIFT", "VH_NUM_SHIFT", "VT_ORDER"])
     stats = OrderedDict()
     diag = {"nsnap": {}, "ratio": [], "depth": [], "npts": [],
             "tail_at_end": 0, "n_nolatch": 0}
@@ -737,7 +783,8 @@ def main(argv=None):
         for c in curves:
             leg = legacy_judge(c["v"], c["i"], a.find_start, a.legacy_pad)
             res, ev, sel = new_judge(c["v"], c["i"], a.find_start, a.dv_abs,
-                                     a.dv_rel, a.recover, a.min_hold_pts)
+                                     a.dv_rel, a.recover, a.min_hold_pts,
+                                     a.rule, a.main_frac)
             vt_chg = not same(leg["VT"], res["VT"])
             vh_chg = not same(leg["VH"], res["VH"])
             n_vt_chg += vt_chg
@@ -755,23 +802,25 @@ def main(argv=None):
             row += ["Y" if vt_chg else "", "Y" if vh_chg else ""]
             row += [diff(res["VT"], leg["VT"]), diff(res["VH"], leg["VH"]),
                     diff(res["VT_NUM"], leg["VT_NUM"]),
-                    diff(res["VH_NUM"], leg["VH_NUM"])]
+                    diff(res["VH_NUM"], leg["VH_NUM"]), res["VT_ORDER"]]
             pairs.append({"LVT": leg["VT"], "LVH": leg["VH"],
                           "NVT": res["VT"], "NVH": res["VH"]})
             w.writerow([fmt(x) for x in row])
 
-            feats.append(curve_features(c, ev, leg))
+            feats.append(curve_features(c, ev, leg, a.main_frac))
             ns = min(res["N_SNAP"], 4)
             diag["nsnap"][ns] = diag["nsnap"].get(ns, 0) + 1
             diag["npts"].append(len(c["v"]))
-            if res["STATUS"] == "NO_LATCH":
+            if res["STATUS"] == "NO_LATCH" or (
+                    a.rule != "sustain" and res["N_SNAP"]):
                 diag["n_nolatch"] += 1
                 diag["ratio"].append(res["RERISE_RATIO"])
                 diag["depth"].append(res["SNAP_DEPTH"])
                 if res["TAIL_VMAX_NUM"] == len(c["v"]):
                     diag["tail_at_end"] += 1
 
-            interesting = (res["STATUS"] != "LATCH") or vt_chg or vh_chg
+            interesting = (res["STATUS"] not in ("LATCH", "TRIGGER")
+                           or vt_chg or vh_chg)
             if can_plot and n_plot < a.plot_max and (a.plot_all or interesting):
                 k = c["key"]
                 name = "_".join([k[3], "W" + k[4], k[5], k[6], k[9],
@@ -781,7 +830,7 @@ def main(argv=None):
                 n_plot += 1
 
     total = len(curves)
-    print("곡선 %d 개 → %s" % (total, a.out))
+    print("곡선 %d 개 → %s   (rule=%s)" % (total, a.out, a.rule))
     for k, n in stats.items():
         print("  %-18s %5d" % (k, n))
     print("  legacy 대비 VT 변경 %d, VH 변경 %d" % (n_vt_chg, n_vh_chg))
@@ -797,7 +846,8 @@ def main(argv=None):
         "%s개=%d" % ("4+" if k == 4 else k, diag["nsnap"][k])
         for k in sorted(diag["nsnap"])))
     if diag["n_nolatch"]:
-        print("  NO_LATCH %d 개 중" % diag["n_nolatch"])
+        print("  %s %d 개 중" % ("NO_LATCH" if a.rule == "sustain"
+                                 else "snapback 있는 곡선", diag["n_nolatch"]))
         print("    RERISE_RATIO p10/p25/p50/p75/p90 : %s"
               % pct_str(diag["ratio"], (10, 25, 50, 75, 90)))
         print("    SNAP_DEPTH(V) p10/p50/p90        : %s"
