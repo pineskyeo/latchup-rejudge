@@ -586,6 +586,31 @@ def fmt_stat(st):
                else ""))
 
 
+def classify_change(leg, res, ev):
+    """legacy → 새 판정 변경 유형 (사람이 읽는 설명)."""
+    lt, nt = leg["VT"], res["VT"]
+    if lt is None and nt is None:
+        return "둘 다 VT 없음"
+    if nt is None:
+        return "legacy만 VT (snapback 아님: 노이즈/미세 흔들림)"
+    if lt is None:
+        return "새로 VT 검출"
+    peaks = [p for p, _ in ev]
+    li = leg["VT_NUM"] - 1 if leg["VT_NUM"] else None
+    lk = None
+    if li is not None:
+        for k, p in enumerate(peaks):
+            if abs(p - li) <= 1:
+                lk = k + 1
+                break
+    nk = res["VT_ORDER"]
+    if same(lt, nt):
+        return "VT 같음 (VH만 변경)"
+    if lk is None:
+        return "legacy 노이즈 지점 → %d번째 snapback" % nk
+    return "%d번째 → %d번째 snapback" % (lk, nk)
+
+
 def item_compare(recs, rule):
     """ITEM 별 legacy vs 새 판정 비교. 실제 ITEM 이름 사용.
 
@@ -931,6 +956,8 @@ def main(argv=None):
     ap.add_argument("--legacy-pad", type=int, default=0,
                     help="legacy 재현 시 배열을 이 길이(max_Pt)까지 0 으로 채움 "
                          "(0=채우지 않음)")
+    ap.add_argument("--show", type=int, default=10,
+                    help="콘솔에 ITEM 별로 보여줄 변경 칩 수 (전체는 *_changes.csv)")
     ap.add_argument("--report", metavar="FILE",
                     help="집계 분석 리포트 파일 (기본: <out>_report.txt)")
     ap.add_argument("--report-items", type=int, default=10,
@@ -980,6 +1007,8 @@ def main(argv=None):
     pairs = []
     feats = []
     cmp_recs = []
+    changes = []
+    item_total = OrderedDict()
     n_vt_chg = n_vh_chg = n_plot = 0
 
     with open(a.out, "w", newline="", encoding="utf-8") as fo:
@@ -1014,6 +1043,17 @@ def main(argv=None):
 
             feats.append(curve_features(c, ev, leg, a.main_frac))
             pol = polarity(c["i"])
+            if vt_chg or vh_chg:
+                k = c["key"]
+                changes.append({
+                    "item": k[9], "wf": k[4], "x": k[5], "y": k[6],
+                    "lot": k[3], "run": c["run"], "nsnap": res["N_SNAP"],
+                    "type": classify_change(leg, res, ev),
+                    "lvt": leg["VT"], "lvt_num": leg["VT_NUM"],
+                    "nvt": res["VT"], "nvt_num": res["VT_NUM"],
+                    "lvh": leg["VH"], "lvh_num": leg["VH_NUM"],
+                    "nvh": res["VH"], "nvh_num": res["VH_NUM"]})
+            item_total[c["key"][9]] = item_total.get(c["key"][9], 0) + 1
             cmp_recs.append({
                 "item": c["key"][9],
                 "lvt": None if leg["VT"] is None else leg["VT"] * pol,
@@ -1068,6 +1108,56 @@ def main(argv=None):
               % diag["tail_at_end"])
 
     base = os.path.splitext(a.out)[0]
+
+    # 칩별 변경 내역
+    chp = base + "_changes.csv"
+    with open(chp, "w", newline="", encoding="utf-8") as fch:
+        wch = csv.writer(fch)
+        wch.writerow(["ITEM", "LOTID", "WFID", "XAXIS", "YAXIS", "RUN",
+                      "N_SNAP", "CHANGE_TYPE",
+                      "LEGACY_VT", "LEGACY_VT_NUM", "NEW_VT", "NEW_VT_NUM",
+                      "VT_DIFF",
+                      "LEGACY_VH", "LEGACY_VH_NUM", "NEW_VH", "NEW_VH_NUM",
+                      "VH_DIFF"])
+        for r in changes:
+            wch.writerow([fmt(x) for x in (
+                r["item"], r["lot"], r["wf"], r["x"], r["y"], r["run"],
+                r["nsnap"], r["type"], r["lvt"], r["lvt_num"], r["nvt"],
+                r["nvt_num"], diff(r["nvt"], r["lvt"]), r["lvh"],
+                r["lvh_num"], r["nvh"], r["nvh_num"],
+                diff(r["nvh"], r["lvh"]))])
+
+    def v_s(v, num):
+        return "-" if v is None else "%.3f(#%s)" % (v, num)
+
+    print("\n[칩별 변경 내역]  ITEM 별 최대 %d 개 표시, 전체 → %s"
+          % (a.show, chp))
+    by_item = OrderedDict()
+    for r in changes:
+        by_item.setdefault(r["item"], []).append(r)
+    for it in sorted(item_total, key=lambda k_: -item_total[k_]):
+        rs_ = by_item.get(it, [])
+        print("\n  ITEM %s : 변경 %d / %d" % (it, len(rs_), item_total[it]))
+        if not rs_:
+            continue
+        types = OrderedDict()
+        for r in rs_:
+            types[r["type"]] = types.get(r["type"], 0) + 1
+        for t, n_ in sorted(types.items(), key=lambda kv: -kv[1]):
+            print("    - %-44s %5d" % (t, n_))
+        print("    %-5s %-6s %-6s %-5s | %-26s | %-26s | %s"
+              % ("WF", "X", "Y", "snap", "VT  legacy → new",
+                 "VH  legacy → new", "유형"))
+        for r in rs_[:a.show]:
+            print("    %-5s %-6s %-6s %-5s | %-26s | %-26s | %s" % (
+                r["wf"], r["x"], r["y"], r["nsnap"],
+                "%s → %s" % (v_s(r["lvt"], r["lvt_num"]),
+                             v_s(r["nvt"], r["nvt_num"])),
+                "%s → %s" % (v_s(r["lvh"], r["lvh_num"]),
+                             v_s(r["nvh"], r["nvh_num"])),
+                r["type"]))
+        if len(rs_) > a.show:
+            print("    ... 외 %d 개" % (len(rs_) - a.show))
     cmp_lines, cmp_rows = item_compare(cmp_recs, a.rule)
     print("\n[ITEM 별 VT: legacy → 새 판정]  (전압은 극성 정규화 값)")
     for ln in cmp_lines:
