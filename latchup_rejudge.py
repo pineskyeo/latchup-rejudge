@@ -176,7 +176,7 @@ def find_snapbacks(vp, start, dv_abs, dv_rel):
     return events
 
 
-def pick_snap(vp, ev, rule, main_frac=0.5):
+def pick_snap(vp, ev, rule, main_frac=0.7):
     """규칙에 따라 VT 로 쓸 snapback index 를 고른다 (ev 는 비어 있지 않음)."""
     depth = [vp[p] - vp[q] for p, q in ev]
     if rule == "first":
@@ -196,7 +196,7 @@ def pick_snap(vp, ev, rule, main_frac=0.5):
 
 
 def new_judge(v, i, find_start, dv_abs, dv_rel, recover, min_hold_pts,
-              rule="main", main_frac=0.5):
+              rule="main", main_frac=0.7):
     n = len(v)
     # 극성: 음방향 주입이면 부호를 뒤집어서 판단하고 결과는 원래 부호로 출력
     nz = [x for x in i if x != 0.0]
@@ -478,7 +478,7 @@ def polarity(i):
     return -1.0 if nz and sorted(nz)[len(nz) // 2] < 0 else 1.0
 
 
-def curve_features(c, ev, leg, main_frac=0.5):
+def curve_features(c, ev, leg, main_frac=0.7):
     """한 곡선의 집계용 특징. 전압은 극성 정규화(양수 방향)."""
     pol = polarity(c["i"])
     vp = [x * pol for x in c["v"]]
@@ -488,6 +488,7 @@ def curve_features(c, ev, leg, main_frac=0.5):
         snaps.append({"order": k + 1, "vt": vp[p], "it": ai[p],
                       "vh": vp[q], "depth": vp[p] - vp[q]})
     rule = {}
+    main = snaps[pick_snap(vp, ev, "main", main_frac)] if snaps else None
     lv = leg["VT"] * pol if leg["VT"] is not None else None
     lh = leg["VH"] * pol if leg["VH"] is not None else None
     rule["LEGACY"] = (lv, lh)
@@ -497,15 +498,24 @@ def curve_features(c, ev, leg, main_frac=0.5):
             "DEEPEST": max(snaps, key=lambda s: s["depth"]),
             "LAST": snaps[-1],
             "MAXPEAK": max(snaps, key=lambda s: s["vt"]),
-            "MAIN": snaps[pick_snap(vp, ev, "main", main_frac)],
+            "MAIN": main,
         }
         for r, s_ in pick.items():
             rule[r] = (s_["vt"], s_["vh"])
     else:
         for r in RULES[1:]:
             rule[r] = (None, None)
-    return {"item": c["key"][9], "n": len(vp), "v_last": vp[-1],
-            "i_last": ai[-1], "vmax": max(vp), "snaps": snaps, "rule": rule}
+    k = c["key"]
+    return {"item": k[9], "n": len(vp), "v_last": vp[-1],
+            "i_last": ai[-1], "vmax": max(vp), "snaps": snaps, "rule": rule,
+            "main": main, "wf": k[4], "x": _num(k[5]), "y": _num(k[6])}
+
+
+def _num(t):
+    try:
+        return float(t)
+    except ValueError:
+        return None
 
 
 def _q(xs, p):
@@ -699,6 +709,105 @@ def build_report(feats, top_items=10):
             for r in RULES:
                 add("  -- %s" % r)
                 L.extend(ascii_hist([f["rule"][r][0] for f in grp], lo, hi))
+
+    # [8] MAIN VT outlier 프로파일
+    add("")
+    add("[8] MAIN VT outlier 프로파일 (상위 4 ITEM). outlier = |VT-med| > "
+        "max(5rσ, 0.05V)")
+    add("  outlier 가 몇 번째 snapback 을 골랐는지, 그 전류/depth 가 정상 곡선과"
+        " 어떻게 다른지.")
+    for idx, it in enumerate(order[:4], 1):
+        grp = [f for f in items[it] if f["main"]]
+        st = robust([f["main"]["vt"] for f in grp])
+        if not st:
+            continue
+        band = max(5.0 * st["rs"], 0.05)
+        outs = [f for f in grp if abs(f["main"]["vt"] - st["med"]) > band]
+        ins = [f for f in grp if abs(f["main"]["vt"] - st["med"]) <= band]
+        add("  ITEM#%d  outlier %d / %d  (위쪽 %d, 아래쪽 %d)" % (
+            idx, len(outs), len(grp),
+            sum(1 for f in outs if f["main"]["vt"] > st["med"]),
+            sum(1 for f in outs if f["main"]["vt"] < st["med"])))
+        if not outs:
+            continue
+        for label, g in (("정상", ins), ("outlier", outs)):
+            od = {}
+            for f in g:
+                o = min(f["main"]["order"], 3)
+                od[o] = od.get(o, 0) + 1
+            ns = {}
+            for f in g:
+                m = min(len(f["snaps"]), 3)
+                ns[m] = ns.get(m, 0) + 1
+            add("    %-7s VT_ORDER %s | snap 수 %s" % (
+                label,
+                " ".join("%s=%d" % ("3+" if k_ == 3 else k_, od[k_])
+                         for k_ in sorted(od)),
+                " ".join("%s=%d" % ("3+" if k_ == 3 else k_, ns[k_])
+                         for k_ in sorted(ns))))
+            add("            VT p10/50/90 %s | I@VT p10/50/90 %s | depth %s"
+                % (pct_str([f["main"]["vt"] for f in g]),
+                   pct_str([f["main"]["it"] for f in g]),
+                   pct_str([f["main"]["depth"] for f in g])))
+            add("            FIRST VT p50 %s | 마지막 V p50 %s | 점 수 p50 %s"
+                % (pct_str([f["snaps"][0]["vt"] for f in g], (50,)),
+                   pct_str([f["v_last"] for f in g], (50,)),
+                   pct_str([f["n"] for f in g], (50,))))
+
+    # [9] trigger 유무가 섞인 ITEM
+    mixed = []
+    for it in order:
+        g = items[it]
+        nt = sum(1 for f in g if not f["snaps"])
+        if len(g) >= 20 and 0.05 <= nt / float(len(g)) <= 0.95:
+            mixed.append((it, nt))
+    add("")
+    add("[9] snapback 없는 곡선이 5~95%% 섞인 ITEM (%d 개)" % len(mixed))
+    nmax = max(f["n"] for f in feats)
+    for it, nt in mixed:
+        g = items[it]
+        idx = order.index(it) + 1
+        add("  ITEM#%d  곡선 %d, snapback 없음 %d (%.0f%%)" % (
+            idx, len(g), nt, 100.0 * nt / len(g)))
+        for label, sub in (("snapback 있음", [f for f in g if f["snaps"]]),
+                           ("snapback 없음", [f for f in g if not f["snaps"]])):
+            if not sub:
+                continue
+            short = sum(1 for f in sub if f["n"] < nmax)
+            add("    %-12s n=%4d  최고 V p10/50/90 %s | 마지막 V p50 %s | "
+                "중간 종료 %d (%.0f%%)" % (
+                    label, len(sub), pct_str([f["vmax"] for f in sub]),
+                    pct_str([f["v_last"] for f in sub], (50,)), short,
+                    100.0 * short / len(sub)))
+        # 웨이퍼별
+        wfs = OrderedDict()
+        for f in g:
+            wfs.setdefault(f["wf"], [0, 0])
+            wfs[f["wf"]][0] += 1
+            if not f["snaps"]:
+                wfs[f["wf"]][1] += 1
+        add("    웨이퍼별 snapback 없음 비율: " + ", ".join(
+            "W%d %d/%d" % (k_ + 1, v_[1], v_[0])
+            for k_, v_ in enumerate(wfs.values())))
+        # 중심/가장자리 (die 좌표 중앙값 기준 거리 3분위)
+        pts = [f for f in g if f["x"] is not None and f["y"] is not None]
+        if len(pts) >= 9:
+            cx = _q(sorted(f["x"] for f in pts), 50)
+            cy = _q(sorted(f["y"] for f in pts), 50)
+            d = sorted(((f["x"] - cx) ** 2 + (f["y"] - cy) ** 2) ** 0.5
+                       for f in pts)
+            t1, t2 = _q(d, 33), _q(d, 67)
+            zone = {"중심": [0, 0], "중간": [0, 0], "가장자리": [0, 0]}
+            for f in pts:
+                r = ((f["x"] - cx) ** 2 + (f["y"] - cy) ** 2) ** 0.5
+                z = "중심" if r <= t1 else ("중간" if r <= t2 else "가장자리")
+                zone[z][0] += 1
+                if not f["snaps"]:
+                    zone[z][1] += 1
+            add("    die 위치별 snapback 없음 비율: " + ", ".join(
+                "%s %d/%d (%.0f%%)" % (z, zone[z][1], zone[z][0],
+                                       100.0 * zone[z][1] / max(1, zone[z][0]))
+                for z in ("중심", "중간", "가장자리")))
     add("")
     return L
 
@@ -721,7 +830,7 @@ def main(argv=None):
                              "sustain"),
                     help="VT 로 쓸 snapback 선택 규칙. main=주 snapback, "
                          "sustain=래치 유지 확인(--recover 사용)")
-    ap.add_argument("--main-frac", type=float, default=0.5,
+    ap.add_argument("--main-frac", type=float, default=0.7,
                     help="main 규칙: 최대 depth 대비 이 비율 이상 snapback 만 후보")
     ap.add_argument("--recover", type=float, default=0.5,
                     help="valley 이후 재상승폭/snapback depth 가 이 값 초과면 "

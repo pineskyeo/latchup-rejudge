@@ -49,7 +49,7 @@ python3 latchup_rejudge.py examples/sample_lup.log --plot plots   # 합성 예�
 
 | 규칙 | VT로 쓰는 snapback | STATUS |
 |---|---|---|
-| `main` (기본) | depth가 최대 depth × `--main-frac`(0.5) 이상인 snapback 중 peak V가 가장 높은 것. 작은 pre-trigger와 래치 후 Ron 구간의 작은 흔들림을 함께 거릅니다 | `TRIGGER` (snapback 1개) / `TRIGGER_MULTI` (여러 개) / `NO_TRIGGER` |
+| `main` (기본) | depth가 최대 depth × `--main-frac`(0.7) 이상인 snapback 중 peak V가 가장 높은 것. 작은 pre-trigger와 래치 후 Ron 구간의 작은 흔들림을 함께 거릅니다 | `TRIGGER` (snapback 1개) / `TRIGGER_MULTI` (여러 개) / `NO_TRIGGER` |
 | `maxpeak`, `deepest`, `first`, `last` | peak V 최고 / 가장 깊음 / 첫 번째 / 마지막 | 위와 같음 |
 | `sustain` | 위 "판정 방법"의 래치 유지 확인. 래치 후 V가 Ron 때문에 크게 오르는 소자에는 맞지 않습니다 | `LATCH` / `LATCH_2ND` / `NO_LATCH` / `NO_TRIGGER` |
 
@@ -87,7 +87,9 @@ VH는 고른 snapback의 valley입니다. `VT_ORDER` 컬럼에 몇 번째 snapba
 | [4] | LEGACY VT를 snapback 개수(0 / 1 / 2개 이상)로 나눈 분포 |
 | [5] | 규칙 후보(LEGACY / FIRST / DEEPEST / LAST / MAXPEAK)별 VT·VH 분포, robust σ, bimodality coefficient |
 | [6] | ITEM별 규칙 비교 (ITEM 이름 대신 순번) |
-| [7] | 곡선이 가장 많은 ITEM의 규칙별 VT 텍스트 히스토그램 |
+| [7] | 곡선이 가장 많은 ITEM 2개의 규칙별 VT 텍스트 히스토그램 |
+| [8] | MAIN VT outlier가 몇 번째 snapback을 골랐는지, 그 전류와 depth를 정상 곡선과 비교 |
+| [9] | snapback이 없는 곡선이 섞인 ITEM의 웨이퍼별, die 위치(중심/중간/가장자리)별 비율 |
 
 ## 출력 CSV
 
