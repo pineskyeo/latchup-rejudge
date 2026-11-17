@@ -137,7 +137,7 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
 </header>
 
 <section id="s1">
-  <div class="sh"><span class="no">01</span><h2>래치업: 기생 PNPN이 서로를 켜서 VDD–VSS 단락</h2></div>
+  <div class="sh"><span class="no">01</span><h2>래치업 (전원 인가 상태): IO PNP → NPN → VDD PNP가 서로를 켜서 VDD–VSS 단락</h2></div>
   <div class="panel" id="scA">
     <div class="ctl">
       <div class="seg" role="group" aria-label="홀드 전압 비교" id="tabA"></div>
@@ -152,11 +152,11 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
 </section>
 
 <section id="s2">
-  <div class="sh"><span class="no">02</span><h2>우리 소자: 1차 트리거 → 유지 못함 → 2차 트리거 → 래치</h2></div>
+  <div class="sh"><span class="no">02</span><h2>우리 측정 (VDD = VSS = 0 V): 1차 트리거 → 유지 못함 → 2차 트리거</h2></div>
   <div class="panel" id="scB">
     <div class="ctl"><div class="legend"><span><i style="background:var(--hole)"></i>정공</span><span><i style="background:var(--elec)"></i>전자</span></div></div>
     <div class="pair">
-      <svg class="fig dev" viewBox="0 0 810 330" role="img" aria-label="1차 트리거에서는 NPN만 켜지고 PNP V_BE가 0.7 V에 못 미친다. 전류가 늘어 R_well 전압이 0.7 V를 넘으면 PNP가 켜져 래치된다"></svg>
+      <svg class="fig dev" viewBox="0 0 810 330" role="img" aria-label="VDD와 VSS가 0 V라 VDD PNP는 켜지지 못한다. IO PNP가 R_sub 전압을 올려 NPN을 켜는 것이 1차, IO PNP와 NPN의 이득 합이 1에 도달하는 것이 2차"></svg>
       <svg class="fig cht" viewBox="0 0 440 330" role="img" aria-label="이중 snapback 곡선. legacy VT는 1차 1.22 V, 새 판정 VT는 2차 1.66 V"></svg>
     </div>
     <div class="ctl"><button class="b play" type="button">❚❚</button><input type="range" min="0" max="1000" value="0" aria-label="시점"></div>
@@ -243,7 +243,7 @@ class Flow{
 function geom(mode){const G={well:[360,710],subTap:[30,86],nS:[118,178],nG:[184,236],nD:[242,302],pD:[404,460],pG:[466,518],pS:[524,584],wTap:[624,680]};
   if(mode==='space')Object.assign(G,{well:[436,710],pD:[452,500],pG:[504,544],pS:[548,598],wTap:[640,692]});return G;}
 function zigH(x1,x2,y,n,amp){const pts=[[x1,y]];for(let i=1;i<n*2;i++)pts.push([x1+(x2-x1)*i/(n*2),y+(i%2?-amp:amp)]);pts.push([x2,y]);return pts.map(p=>f1(p[0])+','+f1(p[1])).join(' ');}
-function drawSection(svg,mode){
+function drawSection(svg,mode,gnd){
   svg.innerHTML='';const G=geom(mode),Y=96,H=26,R={G:G};
   const defs=E('defs',null,svg);const gid='heat-'+Math.random().toString(36).slice(2,8);
   const rg=E('radialGradient',{id:gid},defs);
@@ -300,8 +300,8 @@ function drawSection(svg,mode){
   R.glow=[E('line',{x1:cx(G.subTap),y1:60,x2:cx(G.nS),y2:60,class:'railglow'},W),E('line',{x1:cx(G.pS),y1:60,x2:cx(G.wTap),y2:60,class:'railglow'},W)];
   const v=(x,y2)=>E('line',{x1:x,y1:Y,x2:x,y2:y2,class:'wire'},W);
   const h=(x1,x2,y)=>E('line',{x1:x1,y1:y,x2:x2,y2:y,class:'wire'},W);
-  v(cx(G.subTap),60);v(cx(G.nS),60);h(cx(G.subTap),cx(G.nS),60);T(W,(cx(G.subTap)+cx(G.nS))/2,52,'VSS','lbl b',{'text-anchor':'middle'});
-  v(cx(G.pS),60);v(cx(G.wTap),60);h(cx(G.pS),cx(G.wTap),60);T(W,(cx(G.pS)+cx(G.wTap))/2,52,'VDD','lbl b',{'text-anchor':'middle'});
+  v(cx(G.subTap),60);v(cx(G.nS),60);h(cx(G.subTap),cx(G.nS),60);T(W,(cx(G.subTap)+cx(G.nS))/2,52,gnd?'VSS 0 V':'VSS','lbl b',{'text-anchor':'middle'});
+  v(cx(G.pS),60);v(cx(G.wTap),60);h(cx(G.pS),cx(G.wTap),60);T(W,(cx(G.pS)+cx(G.wTap))/2,52,gnd?'VDD 0 V':'VDD','lbl b',{'text-anchor':'middle'});
   if(mode==='taps')v(605,60);
   if(mode==='guard'||mode==='taps'){v(329,74);T(W,329,68,'VSS','lbl tiny',{'text-anchor':'middle'});}
   if(mode==='guard'){v(382,74);T(W,382,68,'VDD','lbl tiny',{'text-anchor':'middle'});}
@@ -316,11 +316,12 @@ function drawSection(svg,mode){
   R.ro=T(svg,14,20,'','lbl mono b');
   /* gauges: V_BE of NPN (= R_sub drop) and PNP (= R_well drop) */
   const GB=284,GT=128,sc=x=>GB-(GB-GT)*clamp(x,0,1.1)/1.1;
-  T(svg,766,96,'V_BE','lbl tiny b',{'text-anchor':'middle'});
+  T(svg,766,96,gnd?'V_BE · 이득':'V_BE','lbl tiny b',{'text-anchor':'middle'});
   const gauge=(x,lab,res)=>{T(svg,x+9,116,lab,'lbl tiny b',{'text-anchor':'middle'});E('rect',{x:x,y:GT,width:18,height:GB-GT,rx:4,class:'track'},svg);
     const f=E('rect',{x:x,y:GB,width:18,height:0,rx:4,class:'gfill'},svg);T(svg,x+9,GB+16,res,'tick',{'text-anchor':'middle'});return f;};
-  R.gN=gauge(730,'NPN','R_sub');R.gP=gauge(766,'PNP','R_well');
-  E('line',{x1:724,y1:sc(.7),x2:790,y2:sc(.7),class:'thr'},svg);T(svg,792,sc(.7)+4,'0.7','tick');
+  R.gN=gauge(730,'NPN','R_sub');R.gP=gauge(766,gnd?'α합':'PNP',gnd?'루프':'R_well');R.thrP=gnd?1:.7;
+  if(gnd){E('line',{x1:724,y1:sc(.7),x2:754,y2:sc(.7),class:'thr'},svg);E('line',{x1:760,y1:sc(1),x2:790,y2:sc(1),class:'thr'},svg);T(svg,792,sc(1)+4,'1','tick');T(svg,722,sc(.7)+4,'0.7','tick',{'text-anchor':'end'});}
+  else{E('line',{x1:724,y1:sc(.7),x2:790,y2:sc(.7),class:'thr'},svg);T(svg,792,sc(.7)+4,'0.7','tick');}
   R.sc=sc;R.GB=GB;
   R.fg=E('g',null,svg);
   return R;
@@ -337,15 +338,19 @@ function flowPaths(G,mode){
   if(mode==='trench'){P.inj=`M${pd},124 L${pd},205 Q${pd},262 ${pd-52},262 L358,262`;P.npn=`M${ns},124 L${ns},178 Q${ns},198 ${ns+24},198 L334,198`;}
   return P;
 }
-function devState(R,F,s){
-  F.inj.set(s.inj,55);F.npn.set(s.n>0,s.n>1?120:62);F.pnp.set(s.p>0,s.p>1?120:62);
+function devState(R,F,s,gnd){
+  /* gnd: VDD = VSS = 0 V (our measurement). The VDD PNP cannot turn on (its P+ sits at 0 V, below the N-well);
+     the loop is IO PNP + NPN, and the 2nd trigger is their gain sum reaching 1. */
+  const a=s.p>1?1.07:s.p>0?1.0:s.n>0?.72+.26*clamp((s.vP||0)/.69,0,1):(s.inj?.3:0);
+  F.inj.set(s.inj,gnd&&s.p>0?(s.p>1?120:95):55);F.npn.set(s.n>0,s.n>1?120:62);F.pnp.set(!gnd&&s.p>0,s.p>1?120:62);
   R.inj.classList.toggle('on',!!s.inj);R.off.classList.toggle('on',s.inj===0&&s.n>0);
   R.heat.classList.toggle('on',!!s.heat);R.glow.forEach(g=>g.classList.toggle('on',!!s.heat));
-  R.rsub.classList.toggle('on',s.vN>=.7);R.rwell.classList.toggle('on',s.vP>=.7);
-  const g=(el,v)=>{const y=R.sc(v);el.setAttribute('y',f1(y));el.setAttribute('height',f1(R.GB-y));el.setAttribute('class','gfill'+(v>=.7?' bad':''));};
-  g(R.gN,s.vN||0);g(R.gP,s.vP||0);
-  R.lN.setAttribute('class','par'+(s.n>0?' actN':''));R.lP.setAttribute('class','par'+(s.p>0?' actP':''));
-  R.bN.setAttribute('class','bjt'+(s.n>0?' onN':''));R.bI.setAttribute('class','bjt'+(s.inj?' onP':''));R.lI.setAttribute('class','par'+(s.inj?' actP':''));R.bP.setAttribute('class','bjt'+(s.p>0?' onP':''));
+  R.rsub.classList.toggle('on',s.vN>=.7);R.rwell.classList.toggle('on',!gnd&&s.vP>=.7);
+  const g=(el,v,thr)=>{const y=R.sc(v);el.setAttribute('y',f1(y));el.setAttribute('height',f1(R.GB-y));el.setAttribute('class','gfill'+(v>=thr-1e-9?' bad':''));};
+  g(R.gN,s.vN||0,.7);g(R.gP,gnd?a:(s.vP||0),R.thrP);
+  const vp=!gnd&&s.p>0;
+  R.lN.setAttribute('class','par'+(s.n>0?' actN':''));R.lP.setAttribute('class','par'+(vp?' actP':''));
+  R.bN.setAttribute('class','bjt'+(s.n>0?' onN':''));R.bI.setAttribute('class','bjt'+(s.inj?' onP':''));R.lI.setAttribute('class','par'+(s.inj?' actP':''));R.bP.setAttribute('class','bjt'+(vp?' onP':''));
   R.ro.textContent=s.I!=null?`I ${fmtI(s.I)}   V ${s.y.toFixed(2)} V`:'';
 }
 
@@ -388,12 +393,12 @@ class Scene{
     this.rng.addEventListener('input',()=>{this.playing=false;this.sync();this.t=this.rng.value/1000*this.total;this.render(this.idx());});
     this.sync();register(root,dt=>this.update(dt));}
   sync(){this.btn.textContent=this.playing?'❚❚':'▶';this.btn.setAttribute('aria-label',this.playing?'일시정지':'재생');}
-  load(mode,S,o){this.R=drawSection(this.dev,mode);const P=flowPaths(this.R.G,mode);
+  load(mode,S,o){this.R=drawSection(this.dev,mode,this.gnd);const P=flowPaths(this.R.G,mode);
     this.F={inj:new Flow(this.R.fg,P.inj,'hole',10,55),npn:new Flow(this.R.fg,P.npn,'elec',12,62),pnp:new Flow(this.R.fg,P.pnp,'hole',12,62)};
     this.S=S;let c=0;this.cum=S.map(s=>(c+=(s.w||1)/this.rate));this.total=c+this.hold;this.C.load(S,o);this.t=0;this.k=-1;
     if(RM){this.t=this.total;this.rng.value=1000;}this.render(this.idx());}
   idx(){let k=0;while(k<this.S.length-1&&this.cum[k]<=this.t)k++;return k;}
-  render(k){if(k===this.k)return;this.k=k;this.C.render(k);devState(this.R,this.F,this.S[k]);}
+  render(k){if(k===this.k)return;this.k=k;this.C.render(k);devState(this.R,this.F,this.S[k],this.gnd);}
   update(dt){if(!this.S)return;for(const n in this.F)this.F[n].update(dt);
     if(this.playing){this.t+=dt;if(this.t>this.total)this.t=0;this.render(this.idx());this.rng.value=Math.round(this.t/this.total*1000);}}
 }
@@ -424,7 +429,7 @@ const sweep=(a,b,du)=>{const r=[];for(let u=a;u<=b+1e-9;u+=du||DU)r.push(u);retu
 
 /* ===== 02 our device: double snapback ===== */
 (function(){
-  const sc=new Scene(document.getElementById('scB'),Object.assign({},LOGX,{yr:[0,4],yt:[0,1,2,3,4]}),30,3);
+  const sc=new Scene(document.getElementById('scB'),Object.assign({},LOGX,{yr:[0,4],yt:[0,1,2,3,4]}),30,3);sc.gnd=true;
   const u1=-3.6,u2=-2.82,I1=Math.pow(10,u1),I2=Math.pow(10,u2),RW=470,S=[],du=DU/1.6;
   sweep(-7,u1,du).forEach(u=>{const I=Math.pow(10,u);S.push({x:u,y:1.22*Math.pow((u+7)/(u1+7),1.6),I:I,inj:1,n:0,p:0,vN:.7*I/I1,vP:0});});
   S.push({x:u1,y:1.22,I:I1,inj:1,n:1,p:0,vN:.8,vP:I1*RW,w:16});const iB=S.length;
@@ -457,7 +462,7 @@ const sweep=(a,b,du)=>{const r=[];for(let u=a;u<=b+1e-9;u+=du||DU)r.push(u);retu
 
 /* ===== 03 measurement methods (schematic curve) ===== */
 (function(){
-  const sc=new Scene(document.getElementById('scC'),{xr:[0,1],yr:[0,1],xl:'log I →',yl:'V'},16,2.6);
+  const sc=new Scene(document.getElementById('scC'),{xr:[0,1],yr:[0,1],xl:'log I →',yl:'V'},16,2.6);sc.gnd=true;
   const cA=x=>.55*Math.pow(x/.35,1.5),cB=x=>.36+.44*Math.pow((x-.35)/.23,.9),cC=x=>.24+.36*Math.pow((x-.58)/.42,2.2);
   const cF=x=>x<=.35?cA(x):(x<=.58?cB(x):cC(x)),cExt=x=>.24-.03*(.58-x)/.28;
   const stF=x=>x<=.35?{n:0,p:0,vN:.7*x/.35,vP:0}:(x<=.58?{n:1,p:0,vN:.8,vP:.69*(x-.35)/.23}:{n:2,p:2,vN:.95,vP:.95,heat:1});
