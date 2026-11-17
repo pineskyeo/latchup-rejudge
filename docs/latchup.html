@@ -99,6 +99,13 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
 .guide{fill:none;stroke-width:1.3;stroke-dasharray:2 5;opacity:0;transition:opacity .4s}
 .guide.hole{fill:none;stroke:var(--hole)} .guide.elec{fill:none;stroke:var(--elec)} .guide.on{opacity:.5}
 .dim{stroke:var(--fg);stroke-width:1.2} .dimh{fill:var(--fg)}
+.bjt{fill:none;stroke:var(--fg);stroke-width:1.6;stroke-linejoin:round;opacity:.75;transition:stroke .3s,opacity .3s}
+.bjt .bar{stroke-width:4}
+.bjt .env{fill:var(--surface);fill-opacity:.55;stroke-width:1.2}
+.bjt .ah{fill:var(--fg);stroke:none;transition:fill .3s}
+.bjt.onN{stroke:var(--elec);opacity:1} .bjt.onN .ah{fill:var(--elec)}
+.bjt.onP{stroke:var(--hole);opacity:1} .bjt.onP .ah{fill:var(--hole)}
+.term{font:600 10.5px var(--font-mono);fill:var(--muted)}
 .track{fill:var(--grid)} .gfill{fill:var(--ok)} .gfill.bad{fill:var(--hot)}
 .thr{stroke:var(--fg);stroke-width:1.5}
 .ax{stroke:var(--muted);stroke-width:1} .gridl{stroke:var(--grid);stroke-width:1}
@@ -258,10 +265,27 @@ function drawSection(svg,mode){
   if(mode==='trench'){E('rect',{x:338,y:Y-4,width:16,height:204,rx:3,class:'trench'},base);T(base,346,Y+220,'DTI','lbl tiny b',{'text-anchor':'middle'});}
   const small=mode==='taps'||mode==='epi';
   R.rsub=E('polyline',{points:zigH(G.nS[0]+2,G.subTap[1]-2,214,small?2:4,small?3:5)+` ${cx(G.subTap)},122`,class:'res'},base);
-  T(base,cx(G.subTap)+8,242,'R_sub','lbl tiny');
+  T(base,16,240,'R_sub','lbl tiny');
   R.rwell=E('polyline',{points:zigH(G.pS[1]+4,G.wTap[0]+(mode==='taps'?-24:8),152,small?2:5,small?3:5)+` ${cx(G.wTap)},122`,class:'res'},base);
   T(base,G.pS[1]+10,178,'R_well','lbl tiny');
-  R.lN=T(base,cx(G.nS)+66,188,'NPN','par');R.lP=T(base,cx(G.pS)-10,192,'PNP','par',{'text-anchor':'end'});
+  R.lN=T(base,cx(G.nS)+66,188,'NPN','par');R.lP=T(base,cx(G.pS)-30,200,'PNP','par',{'text-anchor':'end'});
+  /* parasitic BJTs drawn on the section: lateral NPN (E = N+ VSS, B = P-sub, C = N-well), vertical PNP (E = P+ VDD, B = N-well, C = P-sub) */
+  const ah=(g,x1,y1,x2,y2)=>{const L=Math.hypot(x2-x1,y2-y1),ux=(x2-x1)/L,uy=(y2-y1)/L,mx=(x1+x2)/2+ux*3,my=(y1+y2)/2+uy*3;
+    E('polygon',{points:`${f1(mx+ux*5)},${f1(my+uy*5)} ${f1(mx-ux*4-uy*4.5)},${f1(my-uy*4-(-ux)*4.5)} ${f1(mx-ux*4+uy*4.5)},${f1(my-uy*4+(-ux)*4.5)}`,class:'ah'},g);};
+  {const ns=cx(G.nS),wl=G.well[0],bx=(ns+wl)/2,by=232,rs=G.nS[0]+2;
+   const g=E('g',{class:'bjt'},base);R.bN=g;
+   E('circle',{cx:bx,cy:by-7,r:24,class:'env'},g);E('line',{x1:bx-15,y1:by,x2:bx+15,y2:by,class:'bar'},g);
+   E('polyline',{points:`${bx-9},${by} ${bx-24},${by-18} ${ns},${by-18} ${ns},122`},g);ah(g,bx-9,by,bx-24,by-18);
+   E('polyline',{points:`${bx+9},${by} ${bx+24},${by-18} ${wl+12},${by-18}`},g);
+   E('polyline',{points:`${bx},${by} ${bx},${by+16} ${rs},${by+16} ${rs},214`},g);
+   T(base,bx-30,by-22,'E','term',{'text-anchor':'end'});T(base,bx+30,by-22,'C','term');T(base,bx+6,by+14,'B','term');}
+  {const ps=cx(G.pS),bx=G.pS[1]-8,by=172,rw=G.pS[1]+4;
+   const g=E('g',{class:'bjt'},base);R.bP=g;
+   E('circle',{cx:bx-6,cy:by,r:24,class:'env'},g);E('line',{x1:bx,y1:by-15,x2:bx,y2:by+15,class:'bar'},g);
+   E('polyline',{points:`${ps},122 ${ps},${by-24} ${bx},${by-9}`},g);ah(g,ps,by-24,bx,by-9);
+   E('polyline',{points:`${bx},${by+9} ${ps},${by+24} ${ps},262`},g);
+   E('polyline',{points:`${bx},${by} ${rw},${by} ${rw},152`},g);
+   T(base,ps-6,by-26,'E','term',{'text-anchor':'end'});T(base,ps-6,by+34,'C','term',{'text-anchor':'end'});T(base,rw+4,by+4,'B','term');}
   /* wiring */
   const W=E('g',null,svg);
   R.glow=[E('line',{x1:cx(G.subTap),y1:60,x2:cx(G.nS),y2:60,class:'railglow'},W),E('line',{x1:cx(G.pS),y1:60,x2:cx(G.wTap),y2:60,class:'railglow'},W)];
@@ -312,6 +336,7 @@ function devState(R,F,s){
   const g=(el,v)=>{const y=R.sc(v);el.setAttribute('y',f1(y));el.setAttribute('height',f1(R.GB-y));el.setAttribute('class','gfill'+(v>=.7?' bad':''));};
   g(R.gN,s.vN||0);g(R.gP,s.vP||0);
   R.lN.setAttribute('class','par'+(s.n>0?' actN':''));R.lP.setAttribute('class','par'+(s.p>0?' actP':''));
+  R.bN.setAttribute('class','bjt'+(s.n>0?' onN':''));R.bP.setAttribute('class','bjt'+(s.p>0?' onP':''));
   R.ro.textContent=s.I!=null?`I ${fmtI(s.I)}   V ${s.y.toFixed(2)} V`:'';
 }
 
