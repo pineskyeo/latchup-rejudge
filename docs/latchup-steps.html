@@ -116,6 +116,15 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
 .thrl{stroke:var(--hot);stroke-width:1.4;stroke-dasharray:5 4}
 .cursor{stroke:var(--muted);stroke-width:1}
 .band{fill:var(--grid);opacity:.5}
+.vs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:880px){.vs{grid-template-columns:1fr}}
+.vs .col{display:flex;flex-direction:column;gap:4px;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px}
+.vh{font-weight:700;font-size:15px} .vh span{font-weight:400;color:var(--muted);font-size:13px;margin-left:6px}
+.tbl{overflow-x:auto}
+.tbl table{border-collapse:collapse;width:100%;font-size:14px;min-width:420px}
+.tbl th,.tbl td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line)}
+.tbl th{color:var(--muted);font-weight:600;font-size:13px}
+.tbl td.hot{color:var(--hot);font-weight:700} .tbl td.okc{color:var(--ok);font-weight:700}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
 
@@ -123,7 +132,7 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
 <header>
   <h1>래치업 단계별 동작</h1>
   <nav aria-label="목차">
-    <a href="#s1">지금 측정</a><a href="#s2">신규 알고리즘</a><a href="#s3">왜 전류 인가</a>
+    <a href="#s1">지금 측정</a><a href="#sw">왜 VDD 인가</a><a href="#s2">신규 알고리즘</a><a href="#s3">왜 전류 인가</a>
   </nav>
 </header>
 
@@ -142,8 +151,32 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
   </div>
 </section>
 
+<section id="sw">
+  <div class="sh"><span class="no">02</span><h2>왜 VDD를 인가하나: IO를 빼 보면 구분된다</h2></div>
+  <div class="panel" id="scW">
+    <div class="seg" aria-label="상태"></div>
+    <div class="cap" aria-live="polite"><b id="capWt"></b><span id="capWs"></span></div>
+    <div class="vs">
+      <div class="col"><div class="vh">VDD 0 V <span>지금 측정</span></div>
+        <svg class="fig dev" viewBox="0 0 720 330" role="img" aria-label="VDD 0 V 단면. 1차와 2차 모두 IO를 빼면 전류가 사라진다"></svg>
+        <svg class="fig tr" viewBox="0 0 720 130" role="img" aria-label="VDD 0 V: IO 전류와 VSS 전류. IO를 빼면 VSS 전류가 0으로"></svg></div>
+      <div class="col"><div class="vh">VDD 1.8 V <span>신규 알고리즘</span></div>
+        <svg class="fig dev" viewBox="0 0 720 330" role="img" aria-label="VDD 1.8 V 단면. 2차 상태는 IO를 빼도 VDD PNP와 NPN이 서로 유지해 전류가 남는다"></svg>
+        <svg class="fig tr" viewBox="0 0 720 130" role="img" aria-label="VDD 1.8 V: 1차는 IO를 빼면 VSS 전류가 0으로, 2차는 남는다"></svg></div>
+    </div>
+    <div class="ctl"><button class="b play" type="button" aria-label="일시정지">❚❚</button><input type="range" min="0" max="1000" value="0" aria-label="시점"></div>
+    <div class="tbl"><table>
+      <thead><tr><th></th><th>VDD 0 V</th><th>VDD 인가</th></tr></thead>
+      <tbody>
+        <tr><td>1차 → IO 빼면</td><td>꺼짐</td><td>꺼짐</td></tr>
+        <tr><td>2차 → IO 빼면</td><td>꺼짐</td><td class="hot">남음</td></tr>
+        <tr><td>판정 근거</td><td>곡선 모양으로 추측</td><td class="okc">남는지 직접 확인</td></tr>
+      </tbody></table></div>
+  </div>
+</section>
+
 <section id="s2">
-  <div class="sh"><span class="no">02</span><h2>신규 알고리즘: 전원 켜고, 펄스 넣었다 빼고, 남는지 본다</h2></div>
+  <div class="sh"><span class="no">03</span><h2>신규 알고리즘: 전원 켜고, 펄스 넣었다 빼고, 남는지 본다</h2></div>
   <div class="panel" id="scB">
     <div class="seg" id="tabB"></div>
     <div class="cap" aria-live="polite"><b id="capBt"></b><span id="capBs"></span></div>
@@ -156,7 +189,7 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
 </section>
 
 <section id="s3">
-  <div class="sh"><span class="no">03</span><h2>왜 전압이 아니라 전류를 걸어서 재나</h2></div>
+  <div class="sh"><span class="no">04</span><h2>왜 전압이 아니라 전류를 걸어서 재나</h2></div>
   <div class="panel" id="scC">
     <div class="seg" id="tabC"></div>
     <div class="cap" aria-live="polite"><b id="capCt"></b><span id="capCs"></span></div>
@@ -424,6 +457,58 @@ const ring=(g,x,y,cls,r)=>E('circle',{cx:f1(x),cy:f1(y),r:r||8,class:cls},g);
   const player=new Player(root,total,t=>render(idx(t)));
   player.tick=dt=>{for(const n in F)F[n].update(dt);};
   if(RM)player.seek(at(rep[5]),true);else player.seek(0,false);
+})();
+
+/* ===== why power VDD: same 1st/2nd states, IO removed, VDD 0 V vs VDD 1.8 V ===== */
+(function(){
+  const root=document.getElementById('scW');
+  const devs=root.querySelectorAll('svg.dev'),trs=root.querySelectorAll('svg.tr');
+  const TT=8,ON=[1,4],X0=96,X1=700,X=t=>X0+(X1-X0)*t/TT;
+  const P=[0,1].map(k=>{
+    const R=drawDev(devs[k],k?'1.8 V':'0 V');
+    const F={inj:new Flow(R.fg,FP.inj,'hole',10,45),npn:new Flow(R.fg,FP.npn,'elec',12,55),
+      vddp:new Flow(R.fg,FP.vddp,'hole',12,95),npn2:new Flow(R.fg,FP.npn2,'elec',14,105)};
+    const s=trs[k];
+    E('rect',{x:X(ON[0]),y:6,width:X(ON[1])-X(ON[0]),height:118,class:'band'},s);
+    T(s,(X(ON[0])+X(ON[1]))/2,18,'IO 주입','tick',{'text-anchor':'middle'});
+    T(s,(X(ON[1])+X1)/2,18,'IO 뺌','tick',{'text-anchor':'middle'});
+    const L=[{t:26,b:56,n:'IO 전류'},{t:72,b:116,n:'VSS 전류'}];
+    L.forEach(l=>{E('line',{x1:X0,y1:l.b,x2:X1,y2:l.b,class:'ax'},s);T(s,X0-8,(l.t+l.b)/2+4,l.n,'lbl tiny b',{'text-anchor':'end'});});
+    const io=E('polyline',{class:'trace io'},s),dd=E('polyline',{class:'trace dd'},s);
+    const verdict=T(s,X1,68,'','lbl b',{'text-anchor':'end'});
+    return {k,R,F,L,io,dd,verdict};});
+  const MODES=[{k:'1차 상태 (이득 < 1)',m:1},{k:'2차 상태 (이득 ≥ 1)',m:2}];
+  let m=1,lastKey='';
+  const box=root.querySelector('.seg');
+  const bs=MODES.map(o=>{const b=document.createElement('button');b.type='button';b.className='b';b.textContent=o.k;
+    b.addEventListener('click',()=>{m=o.m;bs.forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));lastKey='';player.seek(0,false);player.playing=!RM;player.sync();});box.appendChild(b);return b;});
+  bs[0].setAttribute('aria-pressed','true');bs[1].setAttribute('aria-pressed','false');
+  const capT=document.getElementById('capWt'),capS=document.getElementById('capWs');
+  const fIO=t=>(t>=ON[0]&&t<ON[1])?1:0;
+  const fVSS=(k,t)=>{if(t<ON[0])return .03;const amp=m===1?.35:.9;if(t<ON[1])return amp*(1-Math.exp(-(t-ON[0])/.12));
+    if(k===1&&m===2)return .9;return .03+(amp-.03)*Math.exp(-(t-ON[1])/.12);};
+  function render(t){t=Math.min(t,TT);const ph=t<ON[0]?0:t<ON[1]?1:2;
+    P.forEach(p=>{const Y=(l,v)=>l.b-(l.b-l.t)*v;const pts=f=>{const a=[];for(let x=0;x<=t+1e-9;x+=.04)a.push(f1(X(x))+','+f1(f(x)));return a.join(' ');};
+      p.io.setAttribute('points',pts(x=>Y(p.L[0],fIO(x))));p.dd.setAttribute('points',pts(x=>Y(p.L[1],fVSS(p.k,x))));});
+    const key=m+':'+ph;if(key===lastKey)return;lastKey=key;
+    P.forEach(p=>{const k=p.k,R=p.R,F=p.F,on=ph===1,stay=ph===2&&k===1&&m===2,big=m===2;
+      F.inj.set(on,big?95:45);F.npn.set(on,big?100:55);
+      F.vddp.set((on&&big&&k===1)||stay);F.npn2.set((on&&big&&k===1)||stay);
+      R.inj.classList.toggle('on',on);R.off.classList.toggle('on',ph===2);R.heat.classList.toggle('on',(on&&big)||stay);
+      R.rsub.classList.toggle('on',on||stay);R.rwell.classList.toggle('on',(on&&big&&k===1)||stay);
+      R.lP.setAttribute('class','par'+(on?' actP':''));R.lN.setAttribute('class','par'+(on||stay?' actN':''));
+      R.lV.setAttribute('class','par'+((on&&big&&k===1)||stay?' actP':''));
+      R.tIO.textContent=on?'ON':'';R.tNW.textContent='';R.tPW.textContent='';
+      let v='',c='';
+      if(ph===2){if(k===0){v=m===1?'꺼짐':'꺼짐 → 1차와 똑같아 보임';c=m===1?'t-ok':'t-warn';}
+        else{v=m===1?'꺼짐 → 래치 아님':'남음 → 래치';c=m===1?'t-ok':'t-hot';}}
+      p.verdict.textContent=v;p.verdict.setAttribute('class','lbl b '+c);});
+    const CAP={1:['1차 상태','IO PNP → NPN만 켜진 상태. IO를 빼면 두 조건 모두 꺼진다'],
+      2:['2차 상태','VDD 0 V: VDD PNP가 낄 수 없어 빼면 꺼짐 → 1차와 구분 안 됨. VDD 인가: VDD PNP ↔ NPN이 서로 유지 → 남음']};
+    capT.textContent=CAP[m][0];capS.textContent=CAP[m][1];}
+  const player=new Player(root,TT,render);
+  player.tick=dt=>{P.forEach(p=>{for(const n in p.F)p.F[n].update(dt);});};
+  player.seek(RM?TT:0,false);
 })();
 
 /* ===== 02 new algorithm: power on, pulse in, pulse out, does I_DD stay? ===== */
