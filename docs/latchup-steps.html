@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>래치업 단계별 동작</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
+<style>
+/* Layout: 단계 버튼 → [단면 | 등가회로] / [I–V | 게이지]가 같은 시점으로 움직임. 도핑 색 관례(P=분홍, N=파랑), 전류=주황 */
+:root{
+  --bg:#f2f4f6; --surface:#ffffff; --fg:#15202b; --muted:#5d6b78; --line:#cfd7df; --grid:#e3e8ed;
+  --p-fill:#f7dde6; --p-strong:#e8a0b8;
+  --n-fill:#dce8f7; --n-strong:#9fc2ee;
+  --hole:#d3346a; --elec:#1f6fd0;
+  --warn:#c47600; --hot:#d93a3f; --ok:#12866a; --legacy:#6c7c8c;
+  --font-sans:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1318; --surface:#141c23; --fg:#e3eaf0; --muted:#93a2b0; --line:#28343f; --grid:#1f2a33;
+    --p-fill:#3b2030; --p-strong:#8e3a5c;
+    --n-fill:#16283c; --n-strong:#2d5d97;
+    --hole:#ff6b9b; --elec:#5aa5ff;
+    --warn:#f0b23e; --hot:#ff5f64; --ok:#3fd1a0; --legacy:#93a2b0;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1318; --surface:#141c23; --fg:#e3eaf0; --muted:#93a2b0; --line:#28343f; --grid:#1f2a33;
+  --p-fill:#3b2030; --p-strong:#8e3a5c;
+  --n-fill:#16283c; --n-strong:#2d5d97;
+  --hole:#ff6b9b; --elec:#5aa5ff;
+  --warn:#f0b23e; --hot:#ff5f64; --ok:#3fd1a0; --legacy:#93a2b0;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-sans);font-size:15px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 64px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-block:6px 14px}
+h1{font-size:28px;line-height:1.2;margin:0;letter-spacing:-.01em}
+nav{display:flex;flex-wrap:wrap;gap:6px}
+nav a{font-size:13px;color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:var(--surface)}
+nav a:hover{border-color:var(--fg)}
+nav a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
+section{padding-block:22px 4px;border-top:1px solid var(--line);margin-top:18px;display:flex;flex-direction:column;gap:10px}
+.sh{display:flex;align-items:baseline;gap:10px}
+.sh .no{font-family:var(--font-mono);color:var(--muted);font-size:14px}
+h2{font-size:21px;margin:0;line-height:1.3;text-wrap:balance}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+svg.fig{width:100%;height:auto;display:block;max-width:100%}
+.quad{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:center}
+.pair{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:12px;align-items:center}
+@media (max-width:880px){.quad,.pair{grid-template-columns:1fr}}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+button.b{font:inherit;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+button.b:hover{border-color:var(--fg)}
+button.b[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button.play{font-family:var(--font-mono);min-width:3.2em}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.ctl input[type=range]{flex:1 1 220px;min-width:0;accent-color:var(--warn)}
+.cap{display:flex;flex-direction:column;gap:2px;min-height:3.6em;min-width:0}
+.cap b{font-size:16px;line-height:1.35}
+.cap span{color:var(--muted);font-size:14px;line-height:1.45;max-width:78ch}
+/* SVG */
+.lbl{font:13px var(--font-sans);fill:var(--fg)}
+.lbl.tiny{font-size:11.5px}
+.lbl.b{font-weight:700}
+.lbl.muted{fill:var(--muted)}
+.lbl.big{font-size:17px}
+.mono{font-family:var(--font-mono)}
+.par{font:italic 600 13px var(--font-sans);fill:var(--muted);transition:fill .3s}
+.par.actN{fill:var(--elec);font-size:15px;font-weight:700}
+.par.actP{fill:var(--hole);font-size:15px;font-weight:700}
+.si-sub{fill:var(--p-fill)} .si-well{fill:var(--n-fill)}
+.pp{fill:var(--p-strong)} .np{fill:var(--n-strong)}
+.surf{stroke:var(--muted);stroke-width:1}
+.wire{stroke:var(--fg);stroke-width:1.5;fill:none}
+.pad{fill:var(--surface);stroke:var(--fg);stroke-width:1.5}
+.res{fill:none;stroke:var(--fg);stroke-width:1.5;stroke-linejoin:round;transition:stroke .3s}
+.res.on{stroke:var(--warn);stroke-width:2.6}
+.injarrow{fill:var(--warn);opacity:0;transition:opacity .3s} .injarrow.on{opacity:1}
+.iooff{fill:var(--muted);opacity:0;transition:opacity .3s} .iooff.on{opacity:1}
+.heat{opacity:0;transition:opacity .6s} .heat.on{opacity:1}
+.hole{fill:var(--hole)} .elec{fill:var(--elec)}
+.guide{fill:none;stroke-width:1.3;stroke-dasharray:2 5;opacity:0;transition:opacity .4s}
+.guide.hole{fill:none;stroke:var(--hole)} .guide.elec{fill:none;stroke:var(--elec)} .guide.on{opacity:.5}
+.cw{fill:none;stroke:var(--warn);stroke-linecap:round;stroke-dasharray:5 9;animation:flow .7s linear infinite;transition:opacity .3s}
+@keyframes flow{to{stroke-dashoffset:-14}}
+.bjt{stroke:var(--fg);stroke-width:3.2;fill:none;transition:stroke .3s}
+.bjt.onP{stroke:var(--hole)} .bjt.onN{stroke:var(--elec)}
+.bjtA{fill:var(--fg);transition:fill .3s} .bjtA.onP{fill:var(--hole)} .bjtA.onN{fill:var(--elec)}
+.node{fill:var(--fg)}
+.loop{fill:none;stroke:var(--hot);stroke-width:2;transition:opacity .3s}
+.loopA{fill:var(--hot);transition:opacity .3s}
+.track{fill:var(--grid)} .gfill{fill:var(--ok)} .gfill.bad{fill:var(--hot)}
+.thr{stroke:var(--fg);stroke-width:1.5}
+.seg-tap{fill:var(--n-strong)} .seg-sub{fill:var(--p-strong)} .seg-npn{fill:var(--warn)}
+.ax{stroke:var(--muted);stroke-width:1} .gridl{stroke:var(--grid);stroke-width:1}
+.tick{font:11px var(--font-mono);fill:var(--muted)}
+.curve-bg{fill:none;stroke:var(--grid);stroke-width:2.6}
+.curve{fill:none;stroke:var(--fg);stroke-width:2.2;stroke-linejoin:round}
+.dot{fill:var(--warn);stroke:var(--surface);stroke-width:1.5}
+.mk{transition:opacity .3s}
+.mk-legacy{fill:none;stroke:var(--legacy);stroke-width:2}
+.mk-new{fill:none;stroke:var(--ok);stroke-width:2.4}
+.t-legacy{fill:var(--legacy)} .t-new,.t-ok{fill:var(--ok)} .t-warn{fill:var(--warn)} .t-hot{fill:var(--hot)}
+.load{stroke:var(--warn);stroke-width:1.6;stroke-dasharray:6 4}
+.jump{fill:none;stroke:var(--hot);stroke-width:1.8;stroke-dasharray:3 4}
+.unseen{fill:none;stroke:var(--hot);stroke-width:3.2;stroke-dasharray:2 5;stroke-linecap:round}
+.q{fill:none;stroke:var(--hot);stroke-width:2}
+.comp{stroke:var(--hot);stroke-width:1.4;stroke-dasharray:5 4}
+.trace{fill:none;stroke-width:2.2;stroke-linejoin:round}
+.trace.io{stroke:var(--warn)} .trace.dd{stroke:var(--fg)}
+.thrl{stroke:var(--hot);stroke-width:1.4;stroke-dasharray:5 4}
+.cursor{stroke:var(--muted);stroke-width:1}
+.band{fill:var(--grid);opacity:.5}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>래치업 단계별 동작</h1>
+  <nav aria-label="목차">
+    <a href="#s1">지금 측정</a><a href="#s2">전원 인가</a><a href="#s3">왜 전류 인가</a>
+  </nav>
+</header>
+
+<section id="s1">
+  <div class="sh"><span class="no">01</span><h2>지금 측정 조건: IO에 전류 주입, VDD·VSS 0 V</h2></div>
+  <div class="panel" id="scA">
+    <div class="seg" id="stepsA" aria-label="단계"></div>
+    <div class="cap" aria-live="polite"><b id="capAt"></b><span id="capAs"></span></div>
+    <div class="quad">
+      <svg class="fig dev" viewBox="0 0 720 330" role="img" aria-label="소자 단면. IO P+에서 N-well로 주입된 전류가 R_well을 지나 VDD 탭으로, 일부 정공은 P-sub로 가서 NPN을 켠다"></svg>
+      <svg class="fig ckt" viewBox="0 0 360 330" role="img" aria-label="등가회로. PNP 이미터는 IO, 베이스는 N-well, 컬렉터는 P-sub. NPN 컬렉터는 N-well, 베이스는 P-sub, 이미터는 VSS"></svg>
+      <svg class="fig cht" viewBox="0 0 440 300" role="img" aria-label="force-I sweep I–V 곡선. 1차 1.22 V, 2차 1.66 V, 래치 후 1.18 V"></svg>
+      <svg class="fig gau" viewBox="0 0 360 300" role="img" aria-label="노드 전압, NPN V_BE, 알파 합, IO 전류 분배"></svg>
+    </div>
+    <div class="ctl"><button class="b play" type="button" aria-label="일시정지">❚❚</button><input type="range" id="rgA" min="0" max="1000" value="0" aria-label="시점"></div>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="sh"><span class="no">02</span><h2>전원을 켜면: IO를 끊은 뒤에도 남는가</h2></div>
+  <div class="panel" id="scB">
+    <div class="seg" id="tabB"></div>
+    <div class="cap" aria-live="polite"><b id="capBt"></b><span id="capBs"></span></div>
+    <div class="pair">
+      <svg class="fig dev" viewBox="0 0 720 330" role="img" aria-label="VDD 1.8 V 인가 소자 단면. 2차 상태에서는 IO를 끊어도 VDD P+가 정공을 주입해 NPN과 서로 유지한다"></svg>
+      <svg class="fig tch" viewBox="0 0 440 330" role="img" aria-label="시간축. IO 트리거 펄스와 전원 전류 I_DD. 1차 상태는 끊으면 정상, 2차 상태는 남는다"></svg>
+    </div>
+    <div class="ctl"><button class="b play" type="button" aria-label="일시정지">❚❚</button><input type="range" id="rgB" min="0" max="1000" value="0" aria-label="시점"></div>
+  </div>
+</section>
+
+<section id="s3">
+  <div class="sh"><span class="no">03</span><h2>왜 전압이 아니라 전류를 걸어서 재나</h2></div>
+  <div class="panel" id="scC">
+    <div class="seg" id="tabC"></div>
+    <div class="cap" aria-live="polite"><b id="capCt"></b><span id="capCs"></span></div>
+    <svg class="fig" id="chC" viewBox="0 0 640 340" role="img" aria-label="같은 S자 곡선을 전류 인가와 전압 인가로 따라가는 비교. 전압 인가는 트리거에서 전류가 점프해 되꺾임과 Vh가 안 보인다"></svg>
+    <div class="ctl"><button class="b play" type="button" aria-label="일시정지">❚❚</button><input type="range" id="rgC" min="0" max="1000" value="0" aria-label="시점"></div>
+  </div>
+</section>
+</div>
+
+<script>
+(()=>{
+const NS='http://www.w3.org/2000/svg';
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const E=(tag,a,p)=>{const e=document.createElementNS(NS,tag);if(a)for(const k in a){if(k==='text')e.textContent=a[k];else e.setAttribute(k,a[k]);}if(p)p.appendChild(e);return e;};
+const T=(p,x,y,s,cls,extra)=>E('text',Object.assign({x:x,y:y,class:cls||'lbl',text:s},extra||{}),p);
+const cx=r=>(r[0]+r[1])/2;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const f1=v=>(+v).toFixed(1), f2=v=>(+v).toFixed(2);
+const pct=v=>Math.round(v*100)+'%';
+
+/* animation loop; offscreen scenes pause */
+const anims=[];
+function register(root,update){const a={update:update,vis:true};anims.push(a);
+  if('IntersectionObserver' in window){new IntersectionObserver(es=>{for(const en of es)a.vis=en.isIntersecting;},{rootMargin:'120px'}).observe(root);}}
+let last=performance.now();
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;for(const a of anims)if(a.vis)a.update(dt);requestAnimationFrame(frame);}
+
+/* carriers along a path */
+class Flow{
+  constructor(g,d,type,n,speed){this.g=E('g',null,g);this.guide=E('path',{d:d,class:'guide '+type},this.g);
+    this.path=E('path',{d:d,fill:'none',stroke:'none'},this.g);this.len=this.path.getTotalLength();this.n=n;this.speed=speed;this.dots=[];
+    for(let i=0;i<n;i++)this.dots.push(E('circle',{r:3.8,class:type,opacity:0},this.g));this.phase=0;this.on=false;this.alpha=0;}
+  set(on,speed){on=!!on;if(speed!=null)this.speed=speed;if(on===this.on)return;this.on=on;this.guide.classList.toggle('on',on);
+    if(RM){this.alpha=on?1:0;this.place();}}
+  place(){for(let i=0;i<this.n;i++){const s=(this.phase+i*this.len/this.n)%this.len;const p=this.path.getPointAtLength(s);const d=this.dots[i];
+    d.setAttribute('cx',f1(p.x));d.setAttribute('cy',f1(p.y));d.setAttribute('opacity',(this.alpha*Math.min(1,Math.min(s,this.len-s)/16)).toFixed(2));}}
+  update(dt){if(RM)return;this.alpha+=((this.on?1:0)-this.alpha)*Math.min(1,dt*6);
+    if(!this.on&&this.alpha<.01){if(this.alpha!==0){this.alpha=0;this.place();}return;}
+    this.phase=(this.phase+dt*this.speed)%this.len;this.place();}
+}
+
+/* play / pause / scrub over a fixed duration */
+class Player{
+  constructor(root,total,onT){this.btn=root.querySelector('button.play');this.rng=root.querySelector('input[type=range]');
+    this.total=total;this.onT=onT;this.t=0;this.playing=!RM;this.tick=null;
+    this.btn.addEventListener('click',()=>{this.playing=!this.playing;this.sync();});
+    this.rng.addEventListener('input',()=>{this.playing=false;this.sync();this.t=this.rng.value/1000*this.total;this.onT(this.t);});
+    this.sync();register(root,dt=>this.update(dt));}
+  sync(){this.btn.textContent=this.playing?'❚❚':'▶';this.btn.setAttribute('aria-label',this.playing?'일시정지':'재생');}
+  seek(t,pause){if(pause){this.playing=false;this.sync();}this.t=t;this.rng.value=Math.round(t/this.total*1000);this.onT(t);}
+  update(dt){if(this.tick)this.tick(dt);if(!this.playing)return;this.t+=dt;if(this.t>this.total)this.t=0;
+    this.rng.value=Math.round(this.t/this.total*1000);this.onT(this.t);}
+}
+
+/* ---------- lumped IO-SCR model under force-I (VDD = VSS = 0 V) ----------
+   PNP: E = IO P+, B = N-well, C = P-sub.  NPN: E = N+ (VSS), B = P-sub, C = N-well.
+   R_well: N-well -> VDD tap.  R_sub: P-sub -> VSS tap.
+   V_IO = V_EB + V(N-well); V(N-well) = R_well x (current still drawn from the VDD tap).
+   Curve anchored to the measured ITEM#2 shape: 1st peak 1.22 V, 2nd peak 1.66 V, hold 1.18 V. */
+const u1=-3.6,u2=-2.82,du1=.03,UEND=-1.7;
+const I1=Math.pow(10,u1),I2=Math.pow(10,u2),I1b=Math.pow(10,u1+du1),I2b=Math.pow(10,u2+du1);
+const RW=3260,RS=.7/(.3*I1);
+const VEB=I=>clamp(.0335*Math.log(I/1e-12),0,.8);
+const Vpre=I=>VEB(I)+.7*I*RW;
+const Vre=I=>1.0+.66*Math.pow(clamp((I-I1b)/(I2-I1b),0,1),.85);
+const Vlat=I=>1.18+48*(I-I2b);
+function Vcurve(u){if(u<=u1)return Vpre(Math.pow(10,u));
+  if(u<=u1+du1)return 1.22+(1.0-1.22)*(u-u1)/du1;
+  if(u<=u2)return Vre(Math.pow(10,u));
+  if(u<=u2+du1)return 1.66+(1.18-1.66)*(u-u2)/du1;
+  return Vlat(Math.pow(10,u));}
+const LOGT=[[-7,'100n'],[-6,'1µ'],[-5,'10µ'],[-4,'100µ'],[-3,'1m'],[-2,'10m']];
+
+function buildA(){
+  const S=[],add=o=>S.push(o);
+  const pre=u=>{const I=Math.pow(10,u);return {u:u,I:I,V:Vpre(I),vnw:.7*I*RW,vpw:.3*I*RS,aP:.3,aN:0,fr:[.7,.3,0],npn:0,pnp:1,lat:0,st:u<-4.3?0:1};};
+  for(let u=-7;u<u1-1e-9;u+=.04)add(pre(u));
+  const t1=pre(u1);t1.st=2;t1.w=18;add(t1);
+  const re=u=>{const I=Math.pow(10,u),V=Vre(I),vnw=Math.max(0,V-VEB(I)),k=clamp((u-u1)/(u2-u1),0,1);
+    const tap=vnw/RW/I,sub=(.7/RS)/I,aP=.3+.12*k,G=.72+.28*k;
+    return {u:u,I:I,V:V,vnw:vnw,vpw:.7+.03*k,aP:aP,aN:G-aP,fr:[tap,sub,Math.max(0,1-tap-sub)],npn:1,pnp:1,lat:0,st:3};};
+  const s1=re(u1+du1);s1.st=2;s1.w=24;add(s1);
+  for(let u=u1+du1+.03;u<u2-1e-9;u+=.03)add(re(u));
+  const t2=re(u2);t2.st=4;t2.w=18;add(t2);
+  const lat=u=>{const I=Math.pow(10,u),vnw=.22,tap=vnw/RW/I,sub=(.75/RS)/I;
+    return {u:u,I:I,V:Vlat(I),vnw:vnw,vpw:.8,aP:.45,aN:.62,fr:[tap,sub,Math.max(0,1-tap-sub)],npn:2,pnp:2,lat:1,st:5};};
+  const s2=lat(u2+du1);s2.st=4;s2.w=24;add(s2);
+  for(let u=u2+du1+.04;u<=UEND+1e-9;u+=.04)add(lat(u));
+  const end=S[S.length-1];
+  add(Object.assign({},end,{V:0,vnw:0,vpw:0,aP:0,aN:0,fr:[0,0,0],npn:0,pnp:0,lat:0,st:6,off:1,w:46}));
+  return S;
+}
+
+/* ---------- device cross-section ---------- */
+const GEO={Y:96,subTap:[24,80],cath:[130,200],ioP:[400,470],vddP:[530,590],wTap:[630,686],well:[360,700]};
+const FP={
+  inj:'M440,124 L440,236 Q440,262 412,262 L86,262 Q54,262 54,126',
+  base:'M652,124 L652,140 Q652,158 632,158 L488,158 Q462,158 462,126',
+  npn:'M172,124 L172,176 Q172,196 196,196 L392,196 Q426,196 428,128',
+  lat:'M448,124 L448,242 Q448,272 418,272 L210,272 Q180,272 180,128',
+  vddp:'M560,124 L560,250 Q560,286 524,286 L216,286 Q186,286 186,128',
+  npn2:'M158,124 L158,184 Q158,206 184,206 L626,206 Q656,206 656,126'};
+function zigH(x1,x2,y,n,amp){const pts=[[x1,y]];for(let i=1;i<n*2;i++)pts.push([x1+(x2-x1)*i/(n*2),y+(i%2?-amp:amp)]);pts.push([x2,y]);return pts.map(p=>f1(p[0])+','+f1(p[1])).join(' ');}
+function drawDev(svg,vdd){
+  svg.innerHTML='';const g=GEO,Y=g.Y,H=26,R={};
+  const defs=E('defs',null,svg);const gid='h'+Math.random().toString(36).slice(2,8);
+  const rg=E('radialGradient',{id:gid},defs);
+  E('stop',{offset:'0%',style:'stop-color:var(--hot);stop-opacity:.45'},rg);E('stop',{offset:'100%',style:'stop-color:var(--hot);stop-opacity:0'},rg);
+  const base=E('g',null,svg);
+  E('rect',{x:10,y:Y,width:700,height:220,class:'si-sub'},base);T(base,20,Y+212,'P-sub','lbl muted');
+  E('path',{d:`M${g.well[0]},${Y} V${Y+112} q0,16 16,16 H${g.well[1]} V${Y} Z`,class:'si-well'},base);
+  T(base,368,142,'N-well','lbl muted');
+  R.heat=E('ellipse',{cx:330,cy:232,rx:300,ry:80,fill:`url(#${gid})`,class:'heat'},base);
+  E('line',{x1:10,y1:Y,x2:710,y2:Y,class:'surf'},base);
+  const dif=(r,cls,lab)=>{E('rect',{x:r[0],y:Y,width:r[1]-r[0],height:H,rx:3,class:cls},base);T(base,cx(r),Y+18,lab,'lbl tiny',{'text-anchor':'middle'});};
+  dif(g.subTap,'pp','P+');dif(g.cath,'np','N+');dif(g.ioP,'pp','P+');dif(g.vddP,'pp','P+');dif(g.wTap,'np','N+');
+  R.rsub=E('polyline',{points:zigH(150,92,206,4,5)+' 52,124',class:'res'},base);
+  T(base,100,232,'R_sub','lbl tiny');
+  R.rwell=E('polyline',{points:'462,128 '+zigH(476,628,150,5,5)+' 658,124',class:'res'},base);
+  T(base,552,180,'R_well','lbl tiny',{'text-anchor':'middle'});
+  R.lP=T(base,456,252,'PNP','par');
+  R.lN=T(base,280,166,'NPN','par',{'text-anchor':'middle'});
+  R.lV=T(base,568,252,'VDD PNP','par');
+  const W=E('g',null,svg);
+  const v=(x,y2)=>E('line',{x1:x,y1:Y,x2:x,y2:y2,class:'wire'},W),h=(x1,x2,y)=>E('line',{x1:x1,y1:y,x2:x2,y2:y,class:'wire'},W);
+  v(cx(g.subTap),60);v(cx(g.cath),60);h(cx(g.subTap),cx(g.cath),60);T(W,(cx(g.subTap)+cx(g.cath))/2,52,'VSS 0 V','lbl b',{'text-anchor':'middle'});
+  v(cx(g.vddP),60);v(cx(g.wTap),60);h(cx(g.vddP),cx(g.wTap),60);T(W,(cx(g.vddP)+cx(g.wTap))/2,52,'VDD '+vdd,'lbl b',{'text-anchor':'middle'});
+  const io=cx(g.ioP);v(io,40);E('rect',{x:io-17,y:22,width:34,height:20,rx:3,class:'pad'},W);T(W,io,37,'IO','lbl b',{'text-anchor':'middle'});
+  R.inj=E('g',{class:'injarrow'},W);E('rect',{x:io+24,y:5,width:3,height:17},R.inj);E('polygon',{points:`${io+19},21 ${io+32},21 ${io+25.5},30`},R.inj);
+  R.off=T(W,io+22,18,'OFF','lbl tiny b iooff');
+  R.tIO=T(svg,io+40,37,'','lbl mono b');
+  R.tNW=T(svg,600,216,'','lbl tiny mono');
+  R.tPW=T(svg,214,250,'','lbl tiny mono');
+  R.fg=E('g',null,svg);
+  return R;
+}
+
+/* ---------- equivalent circuit ---------- */
+function arrowAt(x,y,dx,dy,s){const L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,px=-uy,py=ux;
+  return `${f1(x+ux*s)},${f1(y+uy*s)} ${f1(x-ux*s*.6+px*s*.75)},${f1(y-uy*s*.6+py*s*.75)} ${f1(x-ux*s*.6-px*s*.75)},${f1(y-uy*s*.6-py*s*.75)}`;}
+function drawCkt(svg){
+  svg.innerHTML='';const C={};const W=E('g',null,svg);
+  const P={A:'M266,34 V84 L244,104',B:'M244,116 H150',
+    RW:'M150,116 H134 l-4,-7 l-8,14 l-8,-14 l-8,14 l-8,-14 l-8,14 l-4,-7 H60 V46',
+    CO:'M244,128 L266,148 V214',
+    RS:'M266,214 H322 V234 l-7,4 l14,8 l-14,8 l14,8 l-14,8 l7,4 V296',
+    NB:'M266,214 H176',NC:'M150,116 V186 L176,204',NE:'M176,224 L150,242 V296'};
+  for(const k in P)E('path',{d:P[k],class:'wire'},W);
+  C.qpBar=E('line',{x1:244,y1:96,x2:244,y2:136,class:'bjt'},W);
+  C.qnBar=E('line',{x1:176,y1:194,x2:176,y2:234,class:'bjt'},W);
+  C.qpA=E('polygon',{points:arrowAt(252,97,-22,20,7),class:'bjtA'},W);
+  C.qnA=E('polygon',{points:arrowAt(160,235,-26,18,7),class:'bjtA'},W);
+  E('circle',{cx:150,cy:116,r:4,class:'node'},W);E('circle',{cx:266,cy:214,r:4,class:'node'},W);
+  E('circle',{cx:266,cy:30,r:5,class:'pad'},W);T(W,278,30,'IO (force I)','lbl tiny b');
+  E('line',{x1:50,y1:44,x2:70,y2:44,class:'wire'},W);T(W,60,36,'VDD 0 V','lbl tiny b',{'text-anchor':'middle'});
+  E('line',{x1:140,y1:298,x2:160,y2:298,class:'wire'},W);T(W,150,316,'N+ → VSS','lbl tiny b',{'text-anchor':'middle'});
+  E('line',{x1:312,y1:298,x2:332,y2:298,class:'wire'},W);T(W,322,316,'탭 → VSS','lbl tiny b',{'text-anchor':'middle'});
+  T(W,150,104,'N-well','lbl tiny muted',{'text-anchor':'middle'});
+  T(W,272,232,'P-sub','lbl tiny muted');
+  T(W,106,140,'R_well','lbl tiny',{'text-anchor':'middle'});
+  T(W,306,268,'R_sub','lbl tiny',{'text-anchor':'end'});
+  C.tP=T(W,276,120,'PNP','lbl b');C.tN=T(W,138,218,'NPN','lbl b',{'text-anchor':'end'});
+  C.sP=T(W,276,136,'','lbl tiny mono');C.sN=T(W,138,234,'','lbl tiny mono',{'text-anchor':'end'});
+  const L=E('g',{opacity:0},svg);C.loop=L;
+  E('path',{d:'M222,150 A20,20 0 1 1 196,176',class:'loop'},L);
+  E('polygon',{points:arrowAt(196,176,-10,8,6),class:'loopA'},L);
+  T(L,212,170,'귀환','lbl tiny b t-hot',{'text-anchor':'middle'});
+  const O=E('g',null,svg);C.cw={};
+  for(const k in P)C.cw[k]=E('path',{d:P[k],class:'cw',opacity:0},O);
+  return C;
+}
+function setCkt(C,s){const on=!s.off,aP=s.aP,fr=s.fr;const bn=Math.max(0,aP-fr[1]),cn=Math.max(0,fr[2]-bn);
+  const w={A:on?1:0,B:on?1-aP:0,RW:on?fr[0]:0,CO:on?aP:0,RS:on?fr[1]:0,NB:on?bn:0,NC:on?cn:0,NE:on?fr[2]:0};
+  for(const k in w){const p=C.cw[k],x=w[k];p.setAttribute('opacity',x>.02?1:0);p.setAttribute('stroke-width',f1(1.6+5*x));}
+  const pc=s.pnp>0?' onP':'',nc=s.npn>0?' onN':'';
+  C.qpBar.setAttribute('class','bjt'+pc);C.qpA.setAttribute('class','bjtA'+pc);
+  C.qnBar.setAttribute('class','bjt'+nc);C.qnA.setAttribute('class','bjtA'+nc);
+  C.sP.textContent=!on?'OFF':s.pnp>1?'포화':'ON α '+f2(s.aP);
+  C.sN.textContent=!on||s.npn===0?'OFF':s.npn>1?'포화':'ON α '+f2(s.aN);
+  C.loop.setAttribute('opacity',on&&(s.aP+s.aN)>=.999?1:0);}
+
+/* ---------- gauges ---------- */
+function drawGau(svg){
+  svg.innerHTML='';const G={};
+  G.v=[[60,'IO'],[180,'N-well'],[300,'P-sub']].map(c=>{T(svg,c[0],20,c[1],'lbl tiny muted',{'text-anchor':'middle'});return T(svg,c[0],44,'','lbl mono b big',{'text-anchor':'middle'});});
+  const bar=(y,label,max,thr,thrLab)=>{T(svg,20,y-8,label,'lbl tiny b');E('rect',{x:20,y:y,width:320,height:14,rx:4,class:'track'},svg);
+    const f=E('rect',{x:20,y:y,width:0,height:14,rx:4,class:'gfill'},svg);const tx=20+320*thr/max;
+    E('line',{x1:tx,y1:y-4,x2:tx,y2:y+18,class:'thr'},svg);T(svg,tx,y+30,thrLab,'tick',{'text-anchor':'middle'});
+    const val=T(svg,340,y-8,'','lbl tiny mono',{'text-anchor':'end'});return {f:f,val:val,max:max,thr:thr};};
+  G.b1=bar(84,'NPN V_BE = P-sub 전위',1.0,.7,'0.7 V');
+  G.b2=bar(148,'α_PNP + α_NPN',1.2,1.0,'1 = 서로 유지');
+  T(svg,20,206,'IO 전류가 빠지는 곳','lbl tiny b');
+  G.seg=['seg-tap','seg-sub','seg-npn'].map(c=>E('rect',{x:20,y:214,width:0,height:22,class:c},svg));
+  G.segT=[0,1,2].map(()=>T(svg,0,229,'','lbl tiny mono b',{'text-anchor':'middle'}));
+  [['seg-tap','VDD 탭 (R_well)'],['seg-sub','VSS 탭 (R_sub)'],['seg-npn','N+ (NPN)']].forEach((l,i)=>{const x=20+i*112;
+    E('rect',{x:x,y:252,width:10,height:10,rx:2,class:l[0]},svg);T(svg,x+14,261,l[1],'lbl tiny');});
+  return G;}
+function setBar(b,v,txt){const w=320*clamp(v,0,b.max)/b.max;b.f.setAttribute('width',f1(w));b.f.setAttribute('class','gfill'+(v>=b.thr-1e-9?' bad':''));b.val.textContent=txt;}
+function setGau(G,s){const on=!s.off;
+  G.v[0].textContent=on?f2(s.V)+' V':'0 V';G.v[1].textContent=f2(s.vnw)+' V';G.v[2].textContent=f2(s.vpw)+' V';
+  setBar(G.b1,s.vpw,f2(s.vpw)+' V');setBar(G.b2,s.aP+s.aN,f2(s.aP+s.aN));
+  let x=20;s.fr.forEach((fv,i)=>{const w=320*fv;G.seg[i].setAttribute('x',f1(x));G.seg[i].setAttribute('width',f1(w));
+    G.segT[i].setAttribute('x',f1(x+w/2));G.segT[i].textContent=w>34?pct(fv):'';x+=w;});}
+
+/* ---------- axes ---------- */
+function axes(svg,c){const X0=c.x0,X1=c.x1,YB=c.yb,YT=c.ytop;
+  const X=x=>X0+(X1-X0)*(x-c.xr[0])/(c.xr[1]-c.xr[0]),Y=y=>YB-(YB-YT)*(y-c.yr[0])/(c.yr[1]-c.yr[0]);
+  const st=E('g',null,svg);
+  (c.xt||[]).forEach(t=>{E('line',{x1:X(t[0]),y1:YT,x2:X(t[0]),y2:YB,class:'gridl'},st);T(st,X(t[0]),YB+16,t[1],'tick',{'text-anchor':'middle'});});
+  (c.yt||[]).forEach(t=>{E('line',{x1:X0,y1:Y(t),x2:X1,y2:Y(t),class:'gridl'},st);T(st,X0-7,Y(t)+4,String(t),'tick',{'text-anchor':'end'});});
+  E('line',{x1:X0,y1:YB,x2:X1,y2:YB,class:'ax'},st);E('line',{x1:X0,y1:YT,x2:X0,y2:YB,class:'ax'},st);
+  if(c.xl)T(st,X1,YB+32,c.xl,'lbl tiny muted',{'text-anchor':'end'});if(c.yl)T(st,X0-6,YT-8,c.yl,'lbl tiny muted');
+  return {X:X,Y:Y,dyn:E('g',null,svg),X0:X0,X1:X1,YB:YB,YT:YT};}
+const ring=(g,x,y,cls,r)=>E('circle',{cx:f1(x),cy:f1(y),r:r||8,class:cls},g);
+
+/* ===== 01 step-by-step, current measurement condition ===== */
+(function(){
+  const root=document.getElementById('scA');
+  const STEPS=[
+    {k:'① 다이오드',t:'IO P+ → N-well 순방향 (PNP 이미터)',s:'주입 전류 대부분이 N-well을 지나 R_well → VDD 탭(0 V)으로 빠진다. PNP 컬렉터로 넘어가는 정공은 일부(α≈0.3)'},
+    {k:'② P-sub 충전',t:'PNP 컬렉터 정공 → P-sub → R_sub → VSS 탭',s:'R_sub에 걸리는 전압 = P-sub 전위 = NPN의 V_BE. 전류에 비례해 오른다'},
+    {k:'③ 1차 트리거',t:'P-sub 0.7 V → NPN 켜짐 → V_IO 1.22 → 1.00 V',s:'NPN이 N+(VSS)에서 전자를 N-well로 넣어 PNP 베이스 전류 일부를 대신 공급 → R_well 전류↓ → N-well 전위↓ → IO 전압↓. legacy VT는 여기 1.22 V'},
+    {k:'④ 유지 못 함',t:'α_PNP + α_NPN < 1 → 전압 다시 상승',s:'NPN이 PNP 베이스 전류를 다 대지 못해 나머지는 여전히 R_well로 흐른다. 전류가 늘면 그 몫도 늘어 전압이 다시 오른다'},
+    {k:'⑤ 2차 트리거',t:'α 합 = 1 → 양성 귀환 → V_IO 1.66 → 1.18 V',s:'전류가 커지면 두 BJT의 α가 커진다. 합이 1이 되면 PNP 컬렉터가 NPN 베이스를, NPN 컬렉터가 PNP 베이스를 전부 서로 공급 → 둘 다 포화'},
+    {k:'⑥ 래치',t:'IO → P+ → N-well → P-sub → N+ → VSS',s:'R_well·탭 전류 ≈ 0. 전압 ≈ Vh + I·R_on이고 전류는 force-I 설정값이 제한한다'},
+    {k:'⑦ IO 끊기',t:'전원이 0 V라 전류원이 IO뿐 → 1차·2차 모두 꺼짐',s:'이 조건에서는 "트리거를 뺀 뒤에도 남는가"를 볼 수 없다. 그래서 전원 인가 측정(02)이 필요하다'}];
+  const S=buildA();
+  const R=drawDev(root.querySelector('svg.dev'),'0 V');
+  const F={inj:new Flow(R.fg,FP.inj,'hole',10,45),base:new Flow(R.fg,FP.base,'elec',10,45),npn:new Flow(R.fg,FP.npn,'elec',12,55),lat:new Flow(R.fg,FP.lat,'hole',12,100)};
+  const C=drawCkt(root.querySelector('svg.ckt'));
+  const G=drawGau(root.querySelector('svg.gau'));
+  const A=axes(root.querySelector('svg.cht'),{xr:[-7,UEND],yr:[0,2.2],xt:LOGT,yt:[0,.5,1,1.5,2],xl:'|I| (A)',yl:'V_IO (V)',x0:46,x1:424,yb:258,ytop:22});
+  const iOff=S.length-1;const P=s=>f1(A.X(s.u))+','+f1(A.Y(s.V));
+  E('polyline',{points:S.slice(0,iOff).map(P).join(' '),class:'curve-bg'},A.dyn);
+  const path=E('polyline',{points:'',class:'curve'},A.dyn);
+  const iT1=S.findIndex(s=>s.st===2),iT2=S.findIndex(s=>s.st===4),iS2=iT2+1;
+  const mk=[];const addMk=(i,draw)=>{const g=E('g',{class:'mk',opacity:0},A.dyn);draw(g);mk.push({i:i,g:g});};
+  addMk(iT1,g=>{E('rect',{x:f1(A.X(u1)-6),y:f1(A.Y(1.22)-6),width:12,height:12,class:'mk-legacy'},g);T(g,A.X(u1)-10,A.Y(1.22)-10,'1차 1.22 V','lbl tiny b t-legacy',{'text-anchor':'end'});});
+  addMk(iT2,g=>{ring(g,A.X(u2),A.Y(1.66),'mk-new');T(g,A.X(u2)-12,A.Y(1.66)-10,'2차 1.66 V','lbl tiny b t-new',{'text-anchor':'end'});});
+  addMk(iS2,g=>{ring(g,A.X(u2+du1),A.Y(1.18),'mk-new',5);T(g,A.X(u2+du1)+8,A.Y(1.18)+20,'Vh 1.18 V','lbl tiny b t-new');});
+  const dot=E('circle',{r:6,class:'dot'},A.dyn);
+  const offT=T(A.dyn,A.X(UEND)-4,A.Y(.25),'IO OFF → 0 V','lbl tiny b t-hot',{'text-anchor':'end',opacity:0});
+  /* steps */
+  const box=document.getElementById('stepsA');const capT=document.getElementById('capAt'),capS=document.getElementById('capAs');
+  const rep=[S.findIndex(s=>s.u>-5.2),S.findIndex(s=>s.u>-3.85),iT1+1,S.findIndex(s=>s.st===3&&s.u>(u1+u2)/2),iS2,S.findIndex(s=>s.lat&&s.u>-2.3),iOff];
+  let cur=-1;
+  const bs=STEPS.map((st,i)=>{const b=document.createElement('button');b.type='button';b.className='b';b.textContent=st.k;b.setAttribute('aria-pressed','false');
+    b.addEventListener('click',()=>player.seek(at(rep[i]),true));box.appendChild(b);return b;});
+  function setStep(i){if(i===cur)return;cur=i;bs.forEach((b,j)=>b.setAttribute('aria-pressed',j===i?'true':'false'));capT.textContent=STEPS[i].t;capS.textContent=STEPS[i].s;}
+  /* timeline */
+  const RATE=24;let c=0;const cum=S.map(s=>(c+=(s.w||1)/RATE));const total=c+1.2;
+  const at=k=>k>0?cum[k-1]+1e-4:0;
+  const idx=t=>{let k=0;while(k<S.length-1&&cum[k]<=t)k++;return k;};
+  let kk=-1;
+  function render(k){if(k===kk)return;kk=k;const s=S[k],on=!s.off;
+    path.setAttribute('points',S.slice(0,Math.min(k,iOff-1)+1).map(P).join(' '));
+    const ds=on?s:S[iOff-1];dot.setAttribute('cx',f1(A.X(ds.u)));dot.setAttribute('cy',f1(A.Y(ds.V)));dot.setAttribute('opacity',on?1:.25);
+    offT.setAttribute('opacity',on?0:1);mk.forEach(m=>m.g.setAttribute('opacity',k>=m.i?1:0));
+    F.inj.set(on&&!s.lat,35+40*s.fr[1]);F.base.set(on&&s.fr[0]>.06,25+70*s.fr[0]);F.npn.set(on&&s.npn>0,s.npn>1?120:55);F.lat.set(on&&!!s.lat,110);
+    R.inj.classList.toggle('on',on);R.off.classList.toggle('on',!on);R.heat.classList.toggle('on',!!s.lat);
+    R.rsub.classList.toggle('on',s.vpw>=.7);R.rwell.classList.toggle('on',on&&s.fr[0]>.15);
+    R.lP.setAttribute('class','par'+(on&&s.pnp>0?' actP':''));R.lN.setAttribute('class','par'+(on&&s.npn>0?' actN':''));
+    R.tIO.textContent=on?f2(s.V)+' V':'0 V';R.tNW.textContent='N-well '+f2(s.vnw)+' V';R.tPW.textContent='P-sub '+f2(s.vpw)+' V';
+    setCkt(C,s);setGau(G,s);setStep(s.st);}
+  const player=new Player(root,total,t=>render(idx(t)));
+  player.tick=dt=>{for(const n in F)F[n].update(dt);};
+  if(RM)player.seek(at(rep[5]),true);else player.seek(0,false);
+})();
+
+/* ===== 02 powered supply: does it stay after IO is removed ===== */
+(function(){
+  const root=document.getElementById('scB');
+  const R=drawDev(root.querySelector('svg.dev'),'1.8 V');
+  const F={inj:new Flow(R.fg,FP.inj,'hole',10,45),npn:new Flow(R.fg,FP.npn,'elec',12,55),lat:new Flow(R.fg,FP.lat,'hole',12,90),
+    vddp:new Flow(R.fg,FP.vddp,'hole',12,95),npn2:new Flow(R.fg,FP.npn2,'elec',14,105)};
+  const svg=root.querySelector('svg.tch');
+  const X0=50,X1=420,TT=10,X=t=>X0+(X1-X0)*t/TT;
+  const top={b:104,t:38},bot={b:286,t:140};const Yt=v=>top.b-(top.b-top.t)*v,Yb=v=>bot.b-(bot.b-bot.t)*v;
+  E('rect',{x:X(1),y:top.t-6,width:X(4)-X(1),height:bot.b-top.t+6,class:'band'},svg);
+  T(svg,(X(1)+X(4))/2,top.t-12,'트리거','lbl tiny muted',{'text-anchor':'middle'});
+  [[top,'IO 주입 전류'],[bot,'I_DD (전원 전류)']].forEach(p=>{E('line',{x1:X0,y1:p[0].b,x2:X1,y2:p[0].b,class:'ax'},svg);E('line',{x1:X0,y1:p[0].t,x2:X0,y2:p[0].b,class:'ax'},svg);T(svg,X0+6,p[0].t+12,p[1],'lbl tiny b');});
+  const thr=.25;E('line',{x1:X0,y1:Yb(thr),x2:X1,y2:Yb(thr),class:'thrl'},svg);T(svg,X1,Yb(thr)-6,'판정 기준 thr','tick t-hot',{'text-anchor':'end'});
+  E('line',{x1:X(7),y1:bot.t,x2:X(7),y2:bot.b,class:'thrl'},svg);T(svg,X(7)+4,bot.b-6,'측정','tick');
+  T(svg,X1,bot.b+28,'시간 →','lbl tiny muted',{'text-anchor':'end'});T(svg,X(4),bot.b+16,'IO 끊음','tick',{'text-anchor':'middle'});
+  const trIO=E('polyline',{class:'trace io'},svg),trDD=E('polyline',{class:'trace dd'},svg);
+  const cur=E('line',{y1:top.t-6,y2:bot.b,class:'cursor'},svg);
+  const verdict=T(svg,X(7)+8,Yb(.6),'','lbl b');
+  const fIO=t=>(t>=1&&t<4)?.85:0;
+  const fDD=(m,t)=>{if(t<1)return .04;if(m===1){if(t<4)return .04+.31*(1-Math.exp(-(t-1)/.15));return .04+.31*(1-Math.exp(-3/.15))*Math.exp(-(t-4)/.12);}
+    return .04+.84*(1-Math.exp(-(t-1)/.15));};
+  const CASES=[
+    {k:'1차 상태에서 IO 끊기',m:1,cap:[
+      ['VDD 1.8 V 인가 · IO 대기','I_DD = 정상 전류 I_nom'],
+      ['트리거 중 · NPN만 켜짐','NPN 컬렉터 전류 × R_well < 0.7 V → VDD 쪽 P+가 정공을 넣지 못함 → 루프가 IO에 의존'],
+      ['IO 끊음 → NPN 꺼짐 → I_DD 정상 복귀','P-sub에 정공을 대던 IO가 사라지면 NPN 베이스가 비어 바로 꺼진다 → STATUS 0 (래치 아님)']]},
+    {k:'2차 상태에서 IO 끊기',m:2,cap:[
+      ['VDD 1.8 V 인가 · IO 대기','I_DD = 정상 전류 I_nom'],
+      ['트리거 중 · 양성 귀환','NPN 컬렉터 전류 × R_well ≥ 0.7 V → VDD P+가 N-well로 정공 주입(VDD PNP ON) → P-sub를 채워 NPN을 붙잡음'],
+      ['IO 끊어도 VDD PNP ↔ NPN이 서로 유지','VDD → P+ → N-well → P-sub → N+ → VSS 경로가 남아 I_DD가 기준 위에 머문다 → STATUS 1 (래치)']]}];
+  let mode=CASES[0],last='';
+  const capT=document.getElementById('capBt'),capS=document.getElementById('capBs');
+  const box=document.getElementById('tabB');
+  const bs=CASES.map(cs=>{const b=document.createElement('button');b.type='button';b.className='b';b.textContent=cs.k;
+    b.addEventListener('click',()=>{mode=cs;bs.forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));last='';player.seek(RM?TT:0,false);});box.appendChild(b);return b;});
+  bs[0].setAttribute('aria-pressed','true');bs[1].setAttribute('aria-pressed','false');
+  function render(t){t=Math.min(t,TT);const m=mode.m,ph=t<1?0:t<4?1:2;
+    const pts=(f)=>{const a=[];for(let x=0;x<=t+1e-9;x+=.05)a.push(f1(X(x))+','+f1(f(x)));return a.join(' ');};
+    trIO.setAttribute('points',pts(x=>Yt(fIO(x))));trDD.setAttribute('points',pts(x=>Yb(fDD(m,x))));
+    cur.setAttribute('x1',f1(X(t)));cur.setAttribute('x2',f1(X(t)));
+    if(t>=7){verdict.textContent=m===1?'래치 아님':'래치';verdict.setAttribute('class','lbl b '+(m===1?'t-ok':'t-hot'));}else verdict.textContent='';
+    const key=m+':'+ph;if(key===last)return;last=key;
+    const c1=m===1;
+    F.inj.set(ph===1&&c1);F.npn.set(ph===1&&c1);F.lat.set(ph===1&&!c1);
+    F.vddp.set(!c1&&ph>=1);F.npn2.set(!c1&&ph>=1);
+    R.inj.classList.toggle('on',ph===1);R.off.classList.toggle('on',ph===2);R.heat.classList.toggle('on',!c1&&ph>=1);
+    R.rsub.classList.toggle('on',ph===1||(!c1&&ph===2));R.rwell.classList.toggle('on',!c1&&ph>=1);
+    R.lP.setAttribute('class','par'+(ph===1?' actP':''));R.lN.setAttribute('class','par'+((ph===1)||(!c1&&ph===2)?' actN':''));
+    R.lV.setAttribute('class','par'+(!c1&&ph>=1?' actP':''));
+    R.tIO.textContent=ph===1?'ON':'';R.tNW.textContent='';R.tPW.textContent='';
+    capT.textContent=mode.cap[ph][0];capS.textContent=mode.cap[ph][1];}
+  const player=new Player(root,TT*.7+1.6,t=>render(t/.7));
+  player.tick=dt=>{for(const n in F)F[n].update(dt);};
+  player.seek(RM?(TT*.7):0,false);
+})();
+
+/* ===== 03 force-I vs force-V on the same S-curve ===== */
+(function(){
+  const root=document.getElementById('scC'),svg=document.getElementById('chC');
+  const A=axes(svg,{xr:[-7,UEND],yr:[0,2.2],xt:LOGT,yt:[0,.5,1,1.5,2],xl:'|I| (A)',yl:'V (V)',x0:56,x1:600,yb:292,ytop:24});
+  const curvePts=(a,b,d)=>{const r=[];for(let u=a;u<=b+1e-9;u+=(d||.01))r.push(f1(A.X(u))+','+f1(A.Y(Vcurve(u))));r.push(f1(A.X(b))+','+f1(A.Y(Vcurve(b))));return r.join(' ');};
+  E('polyline',{points:curvePts(-7,UEND),class:'curve-bg'},A.dyn);
+  E('line',{x1:A.X(UEND),y1:A.YT,x2:A.X(UEND),y2:A.YB,class:'comp'},A.dyn);T(A.dyn,A.X(UEND)-4,A.YT+12,'compliance','tick t-hot',{'text-anchor':'end'});
+  const dyn=E('g',null,svg);
+  const uB0=V=>{let a=-7,b=u1;for(let i=0;i<40;i++){const m=(a+b)/2;if(Vpre(Math.pow(10,m))<V)a=m;else b=m;}return (a+b)/2;};
+  const uB1=V=>Math.log10(I1b+Math.pow(clamp((V-1)/.66,0,1),1/.85)*(I2-I1b));
+  const uB2=V=>Math.log10(I2b+(V-1.18)/48);
+  const V0=Vpre(1e-7),VE=Vcurve(UEND),VQ=1.3;
+  const MODES=[
+    {k:'전류 인가 (force I)',id:'I'},
+    {k:'전압 인가 (force V)',id:'V'}];
+  const CAP={
+    I:[['전류를 정하면 전압은 하나','세로선(설정 전류)은 곡선과 항상 한 점에서 만난다 → 되꺾임까지 그대로 따라간다'],
+       ['1차·2차 트리거, Vh까지 전부 보인다','래치 뒤에도 전류는 설정값을 넘지 못해 소자가 보호된다. snapback 소자는 전류가 전압을 정하는 S자 곡선이라 전류로 재야 한다']],
+    V:[['전압을 정하면 전류가 여러 개','가로선(설정 전압)은 곡선과 여러 점에서 만난다 → 1.22 V를 넘는 순간 전류가 오른쪽 가지로 튄다'],
+       ['같은 1.3 V에 상태 3개','되꺾임 구간에서는 한 전압에 전류 값이 셋이다. 전압원은 어느 것인지 정하지 못하고 안정한 가지로 점프한다'],
+       ['되꺾임·Vh가 안 보이고 전류는 한계까지','빨간 점선 구간은 전압 인가로는 측정되지 않는다. 래치되면 전류가 compliance까지 바로 올라가 소자에 무리가 간다']]};
+  let mode=MODES[0];
+  const capT=document.getElementById('capCt'),capS=document.getElementById('capCs');
+  const box=document.getElementById('tabC');
+  const bs=MODES.map(m=>{const b=document.createElement('button');b.type='button';b.className='b';b.textContent=m.k;
+    b.addEventListener('click',()=>{mode=m;bs.forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));player.seek(RM?player.total:0,false);});box.appendChild(b);return b;});
+  bs[0].setAttribute('aria-pressed','true');bs[1].setAttribute('aria-pressed','false');
+  const TI=6.5,TV1=3.2,TVH=2.2,TV2=2.6,HOLD=2.6;
+  let capKey='';
+  function cap(id,i){const key=id+i;if(key===capKey)return;capKey=key;capT.textContent=CAP[id][i][0];capS.textContent=CAP[id][i][1];}
+  function render(t){dyn.innerHTML='';
+    if(mode.id==='I'){const p=clamp(t/TI,0,1),u=-7+(UEND+7)*p,V=Vcurve(u);
+      E('line',{x1:f1(A.X(u)),y1:A.YT,x2:f1(A.X(u)),y2:A.YB,class:'load'},dyn);
+      E('polyline',{points:curvePts(-7,u,.01),class:'curve'},dyn);
+      const mk=[[u1,1.22,'Vt1 1.22','t-legacy','end',-10,-10],[u1+du1,1.0,'1.00','t-warn','start',8,16],[u2,1.66,'Vt2 1.66','t-new','end',-10,-10],[u2+du1,1.18,'Vh 1.18','t-new','start',8,18]];
+      mk.forEach(m=>{if(u>=m[0]){ring(dyn,A.X(m[0]),A.Y(m[1]),'mk-new',5);T(dyn,A.X(m[0])+m[5],A.Y(m[1])+m[6],m[2],'lbl tiny b '+m[3],{'text-anchor':m[4]});}});
+      E('circle',{cx:f1(A.X(u)),cy:f1(A.Y(V)),r:6,class:'dot'},dyn);
+      T(dyn,f1(A.X(u)+6),A.YT+12,'교점 1개','lbl tiny b t-warn');
+      cap('I',p<1?0:1);return;}
+    /* force V: V rises, operating point stays on a stable (positive-slope) branch */
+    let V,phase;
+    if(t<TV1){V=V0+(VQ-V0)*t/TV1;phase=0;}else if(t<TV1+TVH){V=VQ;phase=1;}else if(t<TV1+TVH+TV2){V=VQ+(VE-VQ)*(t-TV1-TVH)/TV2;phase=0;}else{V=VE;phase=2;}
+    E('line',{x1:A.X0,y1:f1(A.Y(V)),x2:A.X1,y2:f1(A.Y(V)),class:'load'},dyn);
+    const seen=[];let u;
+    if(V<=1.22){u=uB0(V);seen.push(curvePts(-7,u,.01));}
+    else{const a=uB1(1.22);seen.push(curvePts(-7,u1,.01));
+      E('line',{x1:f1(A.X(u1)),y1:f1(A.Y(1.22)),x2:f1(A.X(a)),y2:f1(A.Y(1.22)),class:'jump'},dyn);
+      if(V<=1.66){u=uB1(V);seen.push(curvePts(a,u,.01));}
+      else{const b=uB2(1.66);seen.push(curvePts(a,u2,.01));
+        E('line',{x1:f1(A.X(u2)),y1:f1(A.Y(1.66)),x2:f1(A.X(b)),y2:f1(A.Y(1.66)),class:'jump'},dyn);
+        u=uB2(V);seen.push(curvePts(b,u,.005));}}
+    seen.forEach(pts=>E('polyline',{points:pts,class:'curve'},dyn));
+    if(phase===1){const q=[uB1(VQ),u2+du1*(1.66-VQ)/.48,uB2(VQ)];
+      q.forEach(x=>ring(dyn,A.X(x),A.Y(VQ),'q',9));T(dyn,A.X(q[2])+14,A.Y(VQ)+4,'교점 3개','lbl tiny b t-hot');}
+    if(phase===2){
+      [[u1,u1+du1],[u1+du1,uB1(1.22)],[u2,u2+du1],[u2+du1,uB2(1.66)]].forEach(r=>E('polyline',{points:curvePts(r[0],r[1],.004),class:'unseen'},dyn));
+      T(dyn,A.X(-3.3),A.Y(.62),'빨간 점선 = 측정 안 됨','lbl tiny b t-hot',{'text-anchor':'middle'});
+      T(dyn,A.X(UEND)-8,A.Y(VE)+22,'전류 폭주','lbl tiny b t-hot',{'text-anchor':'end'});}
+    E('circle',{cx:f1(A.X(u)),cy:f1(A.Y(V)),r:6,class:'dot'},dyn);
+    cap('V',phase);}
+  const player=new Player(root,Math.max(TI+HOLD,TV1+TVH+TV2+HOLD),t=>render(t));
+  player.seek(RM?player.total:0,false);
+})();
+
+requestAnimationFrame(frame);
+})();
+</script>

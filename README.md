@@ -7,6 +7,7 @@ force-I sweep로 측정한 latch-up V-I 곡선을 끝까지 본 뒤에 다시 �
 ![double snapback](examples/double_snapback.png)
 
 > 측정 방법 자체를 바꾸는 전원 인가형 latch-up 알고리즘(POR/DOE .cpp)은 [`measure/`](measure/README.md)에 있다.
+> 래치업 동작과 force-I / force-V 비교 설명 페이지(HTML)는 [`docs/`](docs/README.md)에 있다.
 
 ## 입력
 
