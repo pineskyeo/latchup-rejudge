@@ -123,7 +123,7 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
 <header>
   <h1>래치업 단계별 동작</h1>
   <nav aria-label="목차">
-    <a href="#s1">지금 측정</a><a href="#s2">전원 인가</a><a href="#s3">왜 전류 인가</a>
+    <a href="#s1">지금 측정</a><a href="#s2">신규 알고리즘</a><a href="#s3">왜 전류 인가</a>
   </nav>
 </header>
 
@@ -143,13 +143,13 @@ button.play{font-family:var(--font-mono);min-width:3.2em}
 </section>
 
 <section id="s2">
-  <div class="sh"><span class="no">02</span><h2>전원을 켜면: IO를 끊은 뒤에도 남는가</h2></div>
+  <div class="sh"><span class="no">02</span><h2>신규 알고리즘: 전원 켜고, 펄스 넣었다 빼고, 남는지 본다</h2></div>
   <div class="panel" id="scB">
     <div class="seg" id="tabB"></div>
     <div class="cap" aria-live="polite"><b id="capBt"></b><span id="capBs"></span></div>
     <div class="pair">
       <svg class="fig dev" viewBox="0 0 720 330" role="img" aria-label="VDD 1.8 V 인가 소자 단면. 2차 상태에서는 IO를 끊어도 VDD P+가 정공을 주입해 NPN과 서로 유지한다"></svg>
-      <svg class="fig tch" viewBox="0 0 440 330" role="img" aria-label="시간축. IO 트리거 펄스와 전원 전류 I_DD. 1차 상태는 끊으면 정상, 2차 상태는 남는다"></svg>
+      <svg class="fig tch" viewBox="0 0 440 312" role="img" aria-label="시간축 IO 펄스, VDD, I_DD. 작은 펄스는 빼면 I_DD 정상, 큰 펄스는 빼도 I_DD가 남아 래치(VT). VDD를 내리다 꺼지기 직전이 VH, 전원 재인가 후 정상 복귀"></svg>
     </div>
     <div class="ctl"><button class="b play" type="button" aria-label="일시정지">❚❚</button><input type="range" id="rgB" min="0" max="1000" value="0" aria-label="시점"></div>
   </div>
@@ -283,7 +283,7 @@ function drawDev(svg,vdd){
   const W=E('g',null,svg);
   const v=(x,y2)=>E('line',{x1:x,y1:Y,x2:x,y2:y2,class:'wire'},W),h=(x1,x2,y)=>E('line',{x1:x1,y1:y,x2:x2,y2:y,class:'wire'},W);
   v(cx(g.subTap),60);v(cx(g.cath),60);h(cx(g.subTap),cx(g.cath),60);T(W,(cx(g.subTap)+cx(g.cath))/2,52,'VSS 0 V','lbl b',{'text-anchor':'middle'});
-  v(cx(g.vddP),60);v(cx(g.wTap),60);h(cx(g.vddP),cx(g.wTap),60);T(W,(cx(g.vddP)+cx(g.wTap))/2,52,'VDD '+vdd,'lbl b',{'text-anchor':'middle'});
+  v(cx(g.vddP),60);v(cx(g.wTap),60);h(cx(g.vddP),cx(g.wTap),60);R.vddT=T(W,(cx(g.vddP)+cx(g.wTap))/2,52,'VDD '+vdd,'lbl b',{'text-anchor':'middle'});
   const io=cx(g.ioP);v(io,40);E('rect',{x:io-17,y:22,width:34,height:20,rx:3,class:'pad'},W);T(W,io,37,'IO','lbl b',{'text-anchor':'middle'});
   R.inj=E('g',{class:'injarrow'},W);E('rect',{x:io+24,y:5,width:3,height:17},R.inj);E('polygon',{points:`${io+19},21 ${io+32},21 ${io+25.5},30`},R.inj);
   R.off=T(W,io+22,18,'OFF','lbl tiny b iooff');
@@ -426,57 +426,66 @@ const ring=(g,x,y,cls,r)=>E('circle',{cx:f1(x),cy:f1(y),r:r||8,class:cls},g);
   if(RM)player.seek(at(rep[5]),true);else player.seek(0,false);
 })();
 
-/* ===== 02 powered supply: does it stay after IO is removed ===== */
+/* ===== 02 new algorithm: power on, pulse in, pulse out, does I_DD stay? ===== */
 (function(){
   const root=document.getElementById('scB');
   const R=drawDev(root.querySelector('svg.dev'),'1.8 V');
   const F={inj:new Flow(R.fg,FP.inj,'hole',10,45),npn:new Flow(R.fg,FP.npn,'elec',12,55),lat:new Flow(R.fg,FP.lat,'hole',12,90),
     vddp:new Flow(R.fg,FP.vddp,'hole',12,95),npn2:new Flow(R.fg,FP.npn2,'elec',14,105)};
   const svg=root.querySelector('svg.tch');
-  const X0=50,X1=420,TT=10,X=t=>X0+(X1-X0)*t/TT;
-  const top={b:104,t:38},bot={b:286,t:140};const Yt=v=>top.b-(top.b-top.t)*v,Yb=v=>bot.b-(bot.b-bot.t)*v;
-  E('rect',{x:X(1),y:top.t-6,width:X(4)-X(1),height:bot.b-top.t+6,class:'band'},svg);
-  T(svg,(X(1)+X(4))/2,top.t-12,'트리거','lbl tiny muted',{'text-anchor':'middle'});
-  [[top,'IO 주입 전류'],[bot,'I_DD (전원 전류)']].forEach(p=>{E('line',{x1:X0,y1:p[0].b,x2:X1,y2:p[0].b,class:'ax'},svg);E('line',{x1:X0,y1:p[0].t,x2:X0,y2:p[0].b,class:'ax'},svg);T(svg,X0+6,p[0].t+12,p[1],'lbl tiny b');});
-  const thr=.25;E('line',{x1:X0,y1:Yb(thr),x2:X1,y2:Yb(thr),class:'thrl'},svg);T(svg,X1,Yb(thr)-6,'판정 기준 thr','tick t-hot',{'text-anchor':'end'});
-  E('line',{x1:X(7),y1:bot.t,x2:X(7),y2:bot.b,class:'thrl'},svg);T(svg,X(7)+4,bot.b-6,'측정','tick');
-  T(svg,X1,bot.b+28,'시간 →','lbl tiny muted',{'text-anchor':'end'});T(svg,X(4),bot.b+16,'IO 끊음','tick',{'text-anchor':'middle'});
-  const trIO=E('polyline',{class:'trace io'},svg),trDD=E('polyline',{class:'trace dd'},svg);
-  const cur=E('line',{y1:top.t-6,y2:bot.b,class:'cursor'},svg);
-  const verdict=T(svg,X(7)+8,Yb(.6),'','lbl b');
-  const fIO=t=>(t>=1&&t<4)?.85:0;
-  const fDD=(m,t)=>{if(t<1)return .04;if(m===1){if(t<4)return .04+.31*(1-Math.exp(-(t-1)/.15));return .04+.31*(1-Math.exp(-3/.15))*Math.exp(-(t-4)/.12);}
-    return .04+.84*(1-Math.exp(-(t-1)/.15));};
-  const CASES=[
-    {k:'1차 상태에서 IO 끊기',m:1,cap:[
-      ['VDD 1.8 V 인가 · IO 대기','I_DD = 정상 전류 I_nom'],
-      ['트리거 중 · NPN만 켜짐','NPN 컬렉터 전류 × R_well < 0.7 V → VDD 쪽 P+가 정공을 넣지 못함 → 루프가 IO에 의존'],
-      ['IO 끊음 → NPN 꺼짐 → I_DD 정상 복귀','P-sub에 정공을 대던 IO가 사라지면 NPN 베이스가 비어 바로 꺼진다 → STATUS 0 (래치 아님)']]},
-    {k:'2차 상태에서 IO 끊기',m:2,cap:[
-      ['VDD 1.8 V 인가 · IO 대기','I_DD = 정상 전류 I_nom'],
-      ['트리거 중 · 양성 귀환','NPN 컬렉터 전류 × R_well ≥ 0.7 V → VDD P+가 N-well로 정공 주입(VDD PNP ON) → P-sub를 채워 NPN을 붙잡음'],
-      ['IO 끊어도 VDD PNP ↔ NPN이 서로 유지','VDD → P+ → N-well → P-sub → N+ → VSS 경로가 남아 I_DD가 기준 위에 머문다 → STATUS 1 (래치)']]}];
-  let mode=CASES[0],last='';
+  /* time plan (s of animation) */
+  const PH=[0,1,2.5,4,5.5,7.5,11.5,14],TT=14;
+  const LV=[1.8,1.6,1.4,1.2,1.0],VH=1.15,stepW=(PH[6]-PH[5])/LV.length;
+  const vdd=t=>{if(t<PH[5])return 1.8;if(t<PH[6])return LV[Math.min(LV.length-1,Math.floor((t-PH[5])/stepW))];if(t<PH[6]+.8)return 0;return 1.8;};
+  const io=t=>(t>=PH[1]+.2&&t<PH[2])?.45:(t>=PH[3]+.2&&t<PH[4])?.9:0;
+  const held=t=>t>=PH[3]+.2&&t<PH[6]&&vdd(t)>VH;
+  const idd=t=>{if(held(t))return .35+.5*(vdd(t)-VH)/.65;if(t>=PH[1]+.2&&t<PH[2])return .12;if(t>=PH[6]&&t<PH[6]+.8)return 0;return .04;};
+  const X0=58,X1=430,X=t=>X0+(X1-X0)*t/TT;
+  const L=[{t:34,b:84,n:'IO 펄스'},{t:116,b:170,n:'VDD'},{t:202,b:286,n:'I_DD'}];
+  const Y=(l,v)=>l.b-(l.b-l.t)*v;
+  for(let i=0;i<7;i++){if(i%2)E('rect',{x:X(PH[i]),y:22,width:X(PH[i+1])-X(PH[i]),height:268,class:'band'},svg);
+    T(svg,(X(PH[i])+X(PH[i+1]))/2,16,'①②③④⑤⑥⑦'[i],'lbl tiny muted',{'text-anchor':'middle'});}
+  L.forEach(l=>{E('line',{x1:X0,y1:l.b,x2:X1,y2:l.b,class:'ax'},svg);T(svg,X0-6,(l.t+l.b)/2+4,l.n,'lbl tiny b',{'text-anchor':'end'});});
+  const thr=.25;E('line',{x1:X0,y1:Y(L[2],thr),x2:X1,y2:Y(L[2],thr),class:'thrl'},svg);T(svg,X1,Y(L[2],thr)-5,'thr','tick t-hot',{'text-anchor':'end'});
+  T(svg,X1,306,'시간 →','lbl tiny muted',{'text-anchor':'end'});
+  const vy=v=>Y(L[1],v/2);
+  const trIO=E('polyline',{class:'trace io'},svg),trV=E('polyline',{class:'trace',style:'stroke:var(--elec)'},svg),trDD=E('polyline',{class:'trace dd'},svg);
+  const mkVT=E('g',{class:'mk',opacity:0},svg);E('circle',{cx:X(PH[3]+.9),cy:Y(L[0],.9),r:6,class:'mk-new'},mkVT);T(mkVT,X(PH[3]+.9),Y(L[0],.9)-10,'VT','lbl b t-new',{'text-anchor':'middle'});
+  const tVH=PH[5]+3.5*stepW;
+  const mkVH=E('g',{class:'mk',opacity:0},svg);E('circle',{cx:X(tVH),cy:vy(1.2),r:6,class:'mk-new'},mkVH);T(mkVH,X(tVH),vy(1.2)-10,'VH','lbl b t-new',{'text-anchor':'middle'});
+  const cur=E('line',{y1:22,y2:290,class:'cursor'},svg);
+  const CAP=[
+    ['① 전원 켜기','VDD 1.8 V, IO 0 A. 정상 전류 I_nom 측정 → 판정 기준 thr'],
+    ['② 작은 펄스','IO P+ → N-well (PNP) → P-sub → NPN 켜짐. 1차 snapback 상태'],
+    ['③ 펄스 제거 → 꺼짐','IO가 없으면 P-sub를 채울 정공이 없어 NPN 꺼짐. I_DD 정상 → 래치 아님, 펄스 키움'],
+    ['④ 큰 펄스','NPN 전류 × R_well ≥ 0.7 V → VDD 쪽 P+도 정공 주입 (VDD-PNP 켜짐)'],
+    ['⑤ 펄스 제거 → 남음 = 래치','VDD-PNP ↔ NPN이 서로 켜 줌. IO 없이 VDD→VSS로 I_DD 유지 → 이 펄스의 IO 전압이 VT'],
+    ['⑥ VDD 내리기','VDD가 낮으면 루프를 못 버팀. 꺼지기 직전 VDD = VH'],
+    ['⑦ 전원 껐다 켜기','I_DD가 정상으로 돌아오면 손상 없음 (STATUS 1)']];
   const capT=document.getElementById('capBt'),capS=document.getElementById('capBs');
   const box=document.getElementById('tabB');
-  const bs=CASES.map(cs=>{const b=document.createElement('button');b.type='button';b.className='b';b.textContent=cs.k;
-    b.addEventListener('click',()=>{mode=cs;bs.forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));last='';player.seek(RM?TT:0,false);});box.appendChild(b);return b;});
-  bs[0].setAttribute('aria-pressed','true');bs[1].setAttribute('aria-pressed','false');
-  function render(t){t=Math.min(t,TT);const m=mode.m,ph=t<1?0:t<4?1:2;
-    const pts=(f)=>{const a=[];for(let x=0;x<=t+1e-9;x+=.05)a.push(f1(X(x))+','+f1(f(x)));return a.join(' ');};
-    trIO.setAttribute('points',pts(x=>Yt(fIO(x))));trDD.setAttribute('points',pts(x=>Yb(fDD(m,x))));
+  const bs=CAP.map((c,i)=>{const b=document.createElement('button');b.type='button';b.className='b';b.textContent='①②③④⑤⑥⑦'[i];b.setAttribute('aria-label',c[0]);
+    b.addEventListener('click',()=>player.seek((PH[i]+.6)*.7,true));box.appendChild(b);return b;});
+  let lastPh=-1,lastHeld=null;
+  function render(t){t=Math.min(t,TT);
+    const pts=f=>{const a=[];for(let x=0;x<=t+1e-9;x+=.02)a.push(f1(X(x))+','+f1(f(x)));return a.join(' ');};
+    trIO.setAttribute('points',pts(x=>Y(L[0],io(x))));trV.setAttribute('points',pts(x=>vy(vdd(x))));trDD.setAttribute('points',pts(x=>Y(L[2],idd(x))));
     cur.setAttribute('x1',f1(X(t)));cur.setAttribute('x2',f1(X(t)));
-    if(t>=7){verdict.textContent=m===1?'래치 아님':'래치';verdict.setAttribute('class','lbl b '+(m===1?'t-ok':'t-hot'));}else verdict.textContent='';
-    const key=m+':'+ph;if(key===last)return;last=key;
-    const c1=m===1;
-    F.inj.set(ph===1&&c1);F.npn.set(ph===1&&c1);F.lat.set(ph===1&&!c1);
-    F.vddp.set(!c1&&ph>=1);F.npn2.set(!c1&&ph>=1);
-    R.inj.classList.toggle('on',ph===1);R.off.classList.toggle('on',ph===2);R.heat.classList.toggle('on',!c1&&ph>=1);
-    R.rsub.classList.toggle('on',ph===1||(!c1&&ph===2));R.rwell.classList.toggle('on',!c1&&ph>=1);
-    R.lP.setAttribute('class','par'+(ph===1?' actP':''));R.lN.setAttribute('class','par'+((ph===1)||(!c1&&ph===2)?' actN':''));
-    R.lV.setAttribute('class','par'+(!c1&&ph>=1?' actP':''));
-    R.tIO.textContent=ph===1?'ON':'';R.tNW.textContent='';R.tPW.textContent='';
-    capT.textContent=mode.cap[ph][0];capS.textContent=mode.cap[ph][1];}
+    mkVT.setAttribute('opacity',t>=PH[4]?1:0);mkVH.setAttribute('opacity',t>=PH[6]?1:0);
+    let ph=0;for(let i=0;i<7;i++)if(t>=PH[i])ph=i;
+    const h=held(t);
+    if(ph===lastPh&&h===lastHeld)return;lastPh=ph;lastHeld=h;
+    bs.forEach((b,i)=>b.setAttribute('aria-pressed',i===ph?'true':'false'));
+    capT.textContent=CAP[ph][0];capS.textContent=CAP[ph][1];
+    const small=ph===1,big=ph===3;
+    F.inj.set(small);F.npn.set(small);F.lat.set(big);
+    F.vddp.set(h);F.npn2.set(h);
+    R.inj.classList.toggle('on',small||big);R.off.classList.toggle('on',ph===2||ph===4);R.heat.classList.toggle('on',h);
+    R.rsub.classList.toggle('on',small||h);R.rwell.classList.toggle('on',h);
+    R.lP.setAttribute('class','par'+(small||big?' actP':''));R.lN.setAttribute('class','par'+(small||h?' actN':''));
+    R.lV.setAttribute('class','par'+(h?' actP':''));
+    R.tIO.textContent=small||big?'ON':'';R.tNW.textContent='';R.tPW.textContent='';
+    if(R.vddT)R.vddT.textContent='VDD '+(ph===5?'↓':ph===6?'OFF→ON':'1.8 V');}
   const player=new Player(root,TT*.7+1.6,t=>render(t/.7));
   player.tick=dt=>{for(const n in F)F[n].update(dt);};
   player.seek(RM?(TT*.7):0,false);
