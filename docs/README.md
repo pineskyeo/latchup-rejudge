@@ -6,6 +6,7 @@
 |---|---|
 | [`latchup.html`](latchup.html) | 래치업 동작 원리: 기생 PNPN(SCR) 구조와 PNP/NPN 턴온 |
 | [`latchup-steps.html`](latchup-steps.html) | 단계별 애니메이션: 1차 트리거 → 풀림 → 2차 래치, 전원 인가 시 IO 제거 후 I_DD 유지, force-I vs force-V |
+| [`latchup-two-fixes.html`](latchup-two-fixes.html) | 개선안 두 가지 비교: A 측정 그대로 판정만 개선 (`measure/same-condition/`), B 전원 인가형 (`measure/por`, `measure/doe`) |
 | [`forcei-vs-forcev.html`](forcei-vs-forcev.html) | force-I vs force-V 비교: X = 스윕 값, Y = 측정 값 그래프, 스텝당 전력, 소자 손상 관점 애니메이션 |
 
 곡선 수치는 ITEM#2 형태를 본뜬 모델 값이다 (실측 아님).

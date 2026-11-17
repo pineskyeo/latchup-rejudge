@@ -11,6 +11,8 @@
 
 두 버전은 측정 순서와 출력 이름이 같다.
 
+> 바이어스와 측정을 바꾸지 않고 판정만 고친 버전은 [`same-condition/`](same-condition/README.md)에 있다. 이 폴더의 전원 인가형은 측정 조건이 바뀌므로 VT/VH 값의 의미가 기존과 다르다 ([비교 페이지](../docs/latchup-two-fixes.html)).
+
 ## 무엇이 바뀌었나
 
 | 항목 | 기존 (`P9K_M_latchup3`) | 신규 (`P9K_M_latchup_idd`) |
